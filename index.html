@@ -27,7 +27,7 @@
 *{box-sizing:border-box;}
 body{margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg);color:var(--text);}
 button{font-family:inherit;cursor:pointer;border:none;}
-input,select,textarea{font-family:inherit;}
+input,select{font-family:inherit;}
 
 /* ===== LOGIN ===== */
 #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#eef1f5,#e3e8ef);}
@@ -83,8 +83,6 @@ h2.page-title{font-size:24px;margin:0 0 18px;color:var(--navy);}
 .banner h2{margin:0 0 4px;font-size:21px;}
 .banner .school{font-size:13px;color:#c7cee6;}
 .banner-right{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
-.btn-export{background:rgba(255,255,255,.14);color:#fff;padding:11px 18px;border-radius:10px;font-weight:700;font-size:13.5px;}
-.btn-export:hover{background:rgba(255,255,255,.22);}
 .clock-box{text-align:right;border-left:1px solid rgba(255,255,255,.25);padding-left:16px;}
 .clock-box .time{font-size:20px;font-weight:800;}
 .clock-box .date{font-size:11.5px;color:#c7cee6;}
@@ -95,22 +93,16 @@ h2.page-title{font-size:24px;margin:0 0 18px;color:var(--navy);}
 .stat-num{font-size:24px;font-weight:800;color:var(--navy);line-height:1.1;}
 .stat-lbl{font-size:12px;color:var(--muted);margin-top:2px;font-weight:700;}
 
-.two-col{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;align-items:start;}
-@media (max-width:1000px){.two-col{grid-template-columns:1fr;}}
-
 .toolbar-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
 .btn-primary{background:var(--navy);color:#fff;border-radius:10px;padding:11px 18px;font-weight:700;font-size:14px;}
 .btn-primary:hover{background:var(--navy-dark);}
 .btn-gold{background:var(--gold);color:var(--navy-dark);border-radius:10px;padding:11px 18px;font-weight:800;font-size:14px;}
 .btn-gold:hover{background:var(--gold-light);}
-.btn-danger{background:#fdecec;color:var(--danger);border-radius:10px;padding:9px 16px;font-weight:700;font-size:13px;}
-.btn-danger:hover{background:#fbd6d6;}
 .btn-outline{background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;}
 
-.form-row{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:14px;}
 .field{flex:1;min-width:200px;}
 .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:700;}
-.field select,.field input[type=date],.field input[type=number],.field input[type=text],.field input[type=password]{
+.field select,.field input[type=text],.field input[type=password]{
   width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;background:#fff;}
 
 table{width:100%;border-collapse:collapse;font-size:13.5px;}
@@ -149,7 +141,7 @@ tr:hover td{background:#f8f9fb;}
 <div id="loginScreen">
   <div class="login-card">
     <div class="login-logo">📖</div>
-    <h1 id="loginTitle">Rekod TP</h1>
+    <h1>Rekod TP</h1>
     <div class="sub1">Panitia Pendidikan Islam</div>
     <div class="sub2">Sistem Pengurusan Tahap Penguasaan &amp; Eviden</div>
     <div class="login-field">
@@ -160,7 +152,7 @@ tr:hover td{background:#f8f9fb;}
       <label>KATA LALUAN</label>
       <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <button class="btn-login" id="btnLogin" disabled>⏳ Memuatkan data...</button>
+    <button class="btn-login" id="btnLogin">🔑 Log Masuk</button>
     <div class="login-error" id="loginError"></div>
     <div class="login-hint">Log masuk kali pertama? Guna <b>admin</b> / <b>admin123</b></div>
   </div>
@@ -208,8 +200,8 @@ tr:hover td{background:#f8f9fb;}
         <div class="banner">
           <div>
             <div class="eyebrow" style="color:var(--gold-light);">PANEL UTAMA</div>
-            <h2 id="greetingText">Assalamualaikum</h2>
-            <div class="school" id="bannerSchoolLine">SK Putrajaya</div>
+            <h2>Assalamualaikum</h2>
+            <div class="school">SK Pendidikan Islam</div>
           </div>
           <div class="banner-right">
             <div class="clock-box">
@@ -243,7 +235,7 @@ tr:hover td{background:#f8f9fb;}
         <h2 class="page-title">Urus Murid</h2>
         <div class="card">
           <div class="toolbar-row">
-            <h3 style="margin:0;" id="muridCountLabel">Senarai Murid</h3>
+            <h3 style="margin:0;" id="muridCountLabel">Senarai Murid (0)</h3>
             <button class="btn-gold" id="btnTambahMurid">➕ Tambah Murid</button>
           </div>
           <div class="table-wrap">
@@ -273,10 +265,10 @@ tr:hover td{background:#f8f9fb;}
       <div class="view" data-view="selenggara">
         <h2 class="page-title">Selenggara</h2>
         <div class="card" style="max-width:560px;">
-          <h3 style="margin-top:0;">Sambungan Google Sheets</h3>
+          <h3>Sambungan Google Sheets</h3>
           <div class="field" style="margin-bottom:12px;">
             <label>Web App URL</label>
-            <input type="text" id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+            <input type="text" id="apiUrlInput">
           </div>
           <button class="btn-primary" id="btnSimpanApi">Simpan &amp; Muat Semula</button>
         </div>
@@ -306,8 +298,8 @@ tr:hover td{background:#f8f9fb;}
 </div>
 
 <script>
-  // URL Pangkalan Data Google Apps Script
-  let API_URL = localStorage.getItem("VITE_API_URL") || "";
+  // URL GOOGLE APPS SCRIPT ANDA TELAH DISAMBUNGKAN TERUS DI SINI:
+  let API_URL = localStorage.getItem("VITE_API_URL") || "https://script.google.com/macros/s/AKfycbwtkV6mq9T_MtJtwxjrz2I83ZilVC6J4ChqvskG8IaUun0b7CV836p78lLwbTjAaYnRnQ/exec";
 
   let state = {
     students: [],
@@ -316,7 +308,6 @@ tr:hover td{background:#f8f9fb;}
     settings: {}
   };
 
-  // Toast Notifikasi
   function showToast(msg) {
     const container = document.getElementById("toastContainer");
     const toast = document.createElement("div");
@@ -330,7 +321,6 @@ tr:hover td{background:#f8f9fb;}
     }, 3000);
   }
 
-  // API Calls
   async function apiGet() {
     if (!API_URL) return null;
     try {
@@ -357,7 +347,6 @@ tr:hover td{background:#f8f9fb;}
     }
   }
 
-  // Jam & Tarikh
   function updateClock() {
     const now = new Date();
     document.getElementById("clockTime").textContent = now.toLocaleTimeString("ms-MY");
@@ -374,15 +363,14 @@ tr:hover td{background:#f8f9fb;}
       
       btn.classList.add("active");
       const targetView = btn.getAttribute("data-view");
-      document.querySelector(`.view[data-view="${targetView}"]`).classList.add("active");
+      const targetEl = document.querySelector(`.view[data-view="${targetView}"]`);
+      if (targetEl) targetEl.classList.add("active");
       
-      // Close sidebar mobile
       document.querySelector(".sidebar").classList.remove("open");
       document.getElementById("sidebarOverlay").classList.remove("show");
     });
   });
 
-  // Mobile Sidebar Toggle
   document.getElementById("btnMenuToggle").addEventListener("click", () => {
     document.querySelector(".sidebar").classList.add("open");
     document.getElementById("sidebarOverlay").classList.add("show");
@@ -392,25 +380,23 @@ tr:hover td{background:#f8f9fb;}
     document.getElementById("sidebarOverlay").classList.remove("show");
   });
 
-  // Render Data Functions
   function renderAll() {
-    document.getElementById("statJumlahMurid").textContent = state.students.length;
-    document.getElementById("statJumlahRekod").textContent = state.records.length;
+    document.getElementById("statJumlahMurid").textContent = state.students ? state.students.length : 0;
+    document.getElementById("statJumlahRekod").textContent = state.records ? state.records.length : 0;
+    document.getElementById("muridCountLabel").textContent = `Senarai Murid (${state.students ? state.students.length : 0})`;
 
-    // Render Murid
     const muridTbody = document.getElementById("muridTbody");
-    muridTbody.innerHTML = state.students.map(s => `
+    muridTbody.innerHTML = (state.students && state.students.length > 0) ? state.students.map(s => `
       <tr>
         <td>${s.id}</td>
         <td><b>${s.nama}</b></td>
         <td>${s.kelas}</td>
         <td>${s.jantina === 'L' ? '👨 Lelaki' : '👩 Perempuan'}</td>
       </tr>
-    `).join('') || `<tr><td colspan="4" style="text-align:center;">Tiada data murid.</td></tr>`;
+    `).join('') : `<tr><td colspan="4" style="text-align:center;">Tiada data murid.</td></tr>`;
 
-    // Render Rekod
     const rekodTbody = document.getElementById("rekodTbody");
-    rekodTbody.innerHTML = state.records.map(r => `
+    rekodTbody.innerHTML = (state.records && state.records.length > 0) ? state.records.map(r => `
       <tr>
         <td>${r.id}</td>
         <td>${r.studentId}</td>
@@ -419,37 +405,24 @@ tr:hover td{background:#f8f9fb;}
         <td><b>TP${r.tp}</b></td>
         <td>${r.tarikh}</td>
       </tr>
-    `).join('') || `<tr><td colspan="6" style="text-align:center;">Tiada data rekod.</td></tr>`;
+    `).join('') : `<tr><td colspan="6" style="text-align:center;">Tiada data rekod.</td></tr>`;
   }
 
-  // Load Initial Data
   async function initApp() {
-    const btnLogin = document.getElementById("btnLogin");
-    if (!API_URL) {
-      btnLogin.textContent = "⚙️ Tetapkan API URL Terlebih Dahulu";
-      btnLogin.disabled = false;
-      return;
-    }
-
-    const data = await apiGet();
-    if (data) {
-      state = data;
-      btnLogin.textContent = "🔑 Log Masuk";
-      btnLogin.disabled = false;
-      renderAll();
-    } else {
-      btnLogin.textContent = "❌ Gagal Sambung ke Server";
-      showToast("Gagal memuatkan data dari Google Sheets!");
+    if (API_URL) {
+      const data = await apiGet();
+      if (data) {
+        state = data;
+        renderAll();
+      }
     }
   }
 
-  // Event Listeners for Login & App Logic
   document.getElementById("btnLogin").addEventListener("click", () => {
     const u = document.getElementById("loginUsername").value;
     const p = document.getElementById("loginPassword").value;
     
-    // Fallback login / verify with Google Sheets users
-    if ((u === "admin" && p === "admin123") || state.users.some(usr => usr.username === u && usr.password === p)) {
+    if ((u === "admin" && p === "admin123") || (state.users && state.users.some(usr => usr.username === u && usr.password === p))) {
       document.getElementById("loginScreen").style.display = "none";
       document.getElementById("appShell").style.display = "flex";
       showToast("Selamat datang!");
@@ -463,17 +436,15 @@ tr:hover td{background:#f8f9fb;}
     document.getElementById("loginScreen").style.display = "flex";
   });
 
-  // Settings / API Config
   document.getElementById("apiUrlInput").value = API_URL;
   document.getElementById("btnSimpanApi").addEventListener("click", () => {
     const val = document.getElementById("apiUrlInput").value.trim();
     localStorage.setItem("VITE_API_URL", val);
     API_URL = val;
-    showToast("URL API disimpan! Memuatkan semula...");
-    setTimeout(() => location.reload(), 1000);
+    showToast("URL API disimpan!");
+    initApp();
   });
 
-  // Modal Murid Handlers
   document.getElementById("btnTambahMurid").addEventListener("click", () => {
     document.getElementById("muridModal").classList.add("open");
   });
@@ -499,7 +470,6 @@ tr:hover td{background:#f8f9fb;}
     }
   });
 
-  // Startup Init
   initApp();
 </script>
 </body>
