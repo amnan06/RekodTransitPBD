@@ -463,6 +463,7 @@ html,body{overflow-x:hidden;max-width:100%;}
       <!-- ===== ANALISIS VIEW ===== -->
       <div class="view" data-view="analisis">
         <h2 class="page-title">Analisis Pencapaian</h2>
+        <div class="year-tabs" id="analysisYearTabs" style="margin-bottom:16px;"></div>
         <div class="card">
           <div class="tabs">
             <button class="active" data-tab="murid">Analisis Setiap Murid</button>
@@ -471,7 +472,7 @@ html,body{overflow-x:hidden;max-width:100%;}
             <button data-tab="exam">Analisis UPSA/UASA</button>
           </div>
           <div class="stat-grid" id="analysisStats"></div>
-          <div class="chart-box"><canvas id="analysisChart"></canvas></div>
+          <div class="chart-box" id="analysisChartBox"><canvas id="analysisChart"></canvas></div>
           <div class="table-wrap"><table><thead id="analysisTheadWrap"></thead><tbody id="analysisTbody"></tbody></table></div>
         </div>
       </div>
@@ -1295,8 +1296,45 @@ function renderExamSection(){
 }
 
 /* ================= ANALYSIS ================= */
+let analysisSelectedYear = "3";
+function safeChart(ctx, config){
+  try{
+    if(typeof Chart === "undefined") throw new Error("Chart.js tidak dimuat");
+    return new Chart(ctx, config);
+  }catch(e){
+    console.error("Chart render error:",e);
+    const box = document.getElementById("analysisChartBox");
+    const labels = config.data.labels || [];
+    const datasets = config.data.datasets || [];
+    const maxVal = Math.max(1, ...datasets.flatMap(ds=>ds.data));
+    let html = `<div style="padding:10px;">`;
+    labels.forEach((lbl,i)=>{
+      html += `<div style="margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:4px;">${lbl}</div>
+        ${datasets.map(ds=>{
+          const val = ds.data[i]||0;
+          const pct = Math.round(val/maxVal*100);
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+            <div style="width:60px;font-size:10.5px;color:var(--muted);">${ds.label||""}</div>
+            <div style="flex:1;background:#eef0f4;border-radius:4px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${ds.backgroundColor||'#c9973e'};"></div></div>
+            <div style="width:28px;font-size:11px;font-weight:700;">${val}</div>
+          </div>`;
+        }).join("")}
+      </div>`;
+    });
+    html += `</div>`;
+    box.innerHTML = html;
+    return null;
+  }
+}
+function renderAnalysisYearTabs(){
+  document.getElementById("analysisYearTabs").innerHTML = YEARS.map(y=>`<button data-analysis-year="${y}" class="${analysisSelectedYear===y?'active':''}">Tahun ${y}</button>`).join("");
+}
 function renderAnalysis(){
-  const studs = currentStudents();
+  renderAnalysisYearTabs();
+  const box = document.getElementById("analysisChartBox");
+  box.innerHTML = `<canvas id="analysisChart"></canvas>`;
+  const studs = state.students.filter(s=>!s.deleted && getYearFromClass(s.kelas)===analysisSelectedYear);
   const ids = new Set(studs.map(s=>s.id));
   const records = state.records.filter(r=>ids.has(r.studentId));
   const exams = state.examMarks.filter(e=>ids.has(e.studentId));
@@ -1311,21 +1349,21 @@ function renderAnalysis(){
     <div class="stat-card"><div class="stat-icon" style="background:#e6f4ea;">⭐</div><div><div class="stat-num">${records.filter(r=>r.tp==="TP5"||r.tp==="TP6").length}</div><div class="stat-lbl">Pencapaian TP5-TP6</div></div></div>
   `;
 
-  if(chartRef){ chartRef.destroy(); chartRef=null; }
+  if(chartRef){ try{ chartRef.destroy(); }catch(e){} chartRef=null; }
   const ctx = document.getElementById("analysisChart").getContext("2d");
 
   if(analysisTab==="murid"){
-    thead.innerHTML = `<tr><th>Murid</th><th>Bil. Rekod</th><th>TP Purata</th><th>Markah UPSA/UASA Purata</th></tr>`;
-    const data = studs.map(s=>{
+    thead.innerHTML = `<tr><th>Murid</th><th>Kelas</th><th>Bil. Rekod</th><th>TP Purata</th><th>Markah UPSA/UASA Purata</th></tr>`;
+    const data = sortByClassThenName(studs).map(s=>{
       const recs = records.filter(r=>r.studentId===s.id);
       const avgTp = recs.length ? (recs.reduce((a,r)=>a+parseInt(r.tp.replace("TP","")),0)/recs.length) : 0;
       const ex = exams.filter(e=>e.studentId===s.id);
       const avgMarkah = ex.length ? (ex.reduce((a,e)=>a+e.markah,0)/ex.length) : null;
       return {s,count:recs.length,avgTp,avgMarkah};
-    }).sort((a,b)=>b.avgTp-a.avgTp);
-    tbody.innerHTML = data.map(d=>`<tr><td>${genderIcon(d.s.jantina)} ${d.s.nama}</td><td>${d.count}</td><td>${d.avgTp?d.avgTp.toFixed(1):"-"}</td><td>${d.avgMarkah!==null?d.avgMarkah.toFixed(0):"-"}</td></tr>`).join("") || `<tr><td colspan="4" class="empty-row">Tiada data.</td></tr>`;
-    const top = data.slice(0,12);
-    chartRef = new Chart(ctx,{type:"bar",data:{labels:top.map(d=>d.s.nama.split(" ")[0]),datasets:[{label:"TP Purata",data:top.map(d=>d.avgTp),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:6}}}});
+    });
+    tbody.innerHTML = data.map(d=>`<tr><td>${genderIcon(d.s.jantina)} ${d.s.nama}</td><td>${d.s.kelas}</td><td>${d.count}</td><td>${d.avgTp?d.avgTp.toFixed(1):"-"}</td><td>${d.avgMarkah!==null?d.avgMarkah.toFixed(0):"-"}</td></tr>`).join("") || `<tr><td colspan="5" class="empty-row">Tiada data.</td></tr>`;
+    const top = data.slice().sort((a,b)=>b.avgTp-a.avgTp).slice(0,12);
+    chartRef = safeChart(ctx,{type:"bar",data:{labels:top.map(d=>d.s.nama.split(" ")[0]),datasets:[{label:"TP Purata",data:top.map(d=>d.avgTp),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:6}}}});
   }
   if(analysisTab==="bidang"){
     thead.innerHTML = `<tr><th>Bidang</th><th>Bil. Rekod</th><th>TP Purata</th><th>% Capai TP5-TP6</th></tr>`;
@@ -1336,7 +1374,7 @@ function renderAnalysis(){
       return {label:b.label,count:recs.length,avgTp,pct:recs.length?(high/recs.length*100):0};
     });
     tbody.innerHTML = data.map(d=>`<tr><td>${d.label}</td><td>${d.count}</td><td>${d.avgTp?d.avgTp.toFixed(1):"-"}</td><td>${d.pct.toFixed(0)}%</td></tr>`).join("");
-    chartRef = new Chart(ctx,{type:"bar",data:{labels:data.map(d=>d.label),datasets:[{label:"TP Purata",data:data.map(d=>d.avgTp),backgroundColor:"#1e2a4a"}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:6}}}});
+    chartRef = safeChart(ctx,{type:"bar",data:{labels:data.map(d=>d.label),datasets:[{label:"TP Purata",data:data.map(d=>d.avgTp),backgroundColor:"#1e2a4a"}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:6}}}});
   }
   if(analysisTab==="tajuk"){
     thead.innerHTML = `<tr><th>Tajuk</th><th>Bidang</th><th>Bil. Rekod</th><th>TP Purata</th></tr>`;
@@ -1345,7 +1383,7 @@ function renderAnalysis(){
     const data = Object.values(map).map(m=>({...m,count:m.recs.length,avgTp:m.recs.reduce((a,r)=>a+parseInt(r.tp.replace("TP","")),0)/m.recs.length})).sort((a,b)=>b.count-a.count);
     tbody.innerHTML = data.map(d=>`<tr><td>${d.tajuk}</td><td>${BIDANG[d.bidang]?.label||d.bidang}</td><td>${d.count}</td><td>${d.avgTp.toFixed(1)}</td></tr>`).join("") || `<tr><td colspan="4" class="empty-row">Tiada data.</td></tr>`;
     const top = data.slice(0,10);
-    chartRef = new Chart(ctx,{type:"bar",data:{labels:top.map(d=>d.tajuk),datasets:[{label:"Bil. Rekod",data:top.map(d=>d.count),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:"y"}});
+    chartRef = safeChart(ctx,{type:"bar",data:{labels:top.map(d=>d.tajuk),datasets:[{label:"Bil. Rekod",data:top.map(d=>d.count),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:"y"}});
   }
   if(analysisTab==="exam"){
     thead.innerHTML = `<tr><th>Gred</th><th>UPSA</th><th>UASA</th></tr>`;
@@ -1353,7 +1391,7 @@ function renderAnalysis(){
     const counts={UPSA:{},UASA:{}}; grades.forEach(g=>{counts.UPSA[g]=0;counts.UASA[g]=0;});
     exams.forEach(e=>{ const g=gradeFromMarkah(e.markah); counts[e.jenis][g]++; });
     tbody.innerHTML = grades.map(g=>`<tr><td><span class="badge" style="background:${gradeColor(g)};color:${gradeTextColor(g)};">${g}</span></td><td>${counts.UPSA[g]}</td><td>${counts.UASA[g]}</td></tr>`).join("");
-    chartRef = new Chart(ctx,{type:"bar",data:{labels:grades,datasets:[{label:"UPSA",data:grades.map(g=>counts.UPSA[g]),backgroundColor:"#1e2a4a"},{label:"UASA",data:grades.map(g=>counts.UASA[g]),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false}});
+    chartRef = safeChart(ctx,{type:"bar",data:{labels:grades,datasets:[{label:"UPSA",data:grades.map(g=>counts.UPSA[g]),backgroundColor:"#1e2a4a"},{label:"UASA",data:grades.map(g=>counts.UASA[g]),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false}});
   }
 }
 
@@ -1528,7 +1566,8 @@ document.addEventListener("click", async (e)=>{
     const tpBtn = document.querySelector("#lihatTpRow .tp-btn.selected");
     if(!bidang || !tajuk){ showToast("Sila pilih bidang & tajuk."); return; }
     if(!tpBtn){ showToast("Sila pilih Tahap Penguasaan (TP)."); return; }
-    t.disabled=true;
+    const origTxt1 = t.textContent;
+    t.disabled=true; t.textContent="⏳ Menyimpan...";
     const evidenceImg = document.getElementById("lihatEvidenceThumb").style.display!=="none" ? document.getElementById("lihatEvidenceThumb").src : null;
     const newRecord = { id:uid("r"), studentId:lihatMuridId, bidang, tajuk, tp:tpBtn.dataset.tp, tarikh, evidence:evidenceImg };
     state.records.push(newRecord); await saveState();
@@ -1538,8 +1577,8 @@ document.addEventListener("click", async (e)=>{
     const evInput = document.getElementById("lihatEvidence"); if(evInput) evInput.value="";
     renderLihatMuridModal(lihatMuridId);
     renderRekodTable();
-    showToast("Rekod disimpan.");
-    t.disabled=false;
+    t.textContent = origTxt1; t.disabled=false;
+    showToast("✅ Berjaya disimpan.");
   }
   if(t.dataset.lihatBidangSel){ /* placeholder */ }
   if(t.id==="btnSimpanSemua"){
@@ -1547,15 +1586,16 @@ document.addEventListener("click", async (e)=>{
     const tarikh = document.getElementById("pukalTarikh").value || todayStr();
     if(!wizard.pukalTp){ showToast("Sila pilih Tahap Penguasaan (TP)."); return; }
     if(wizard.pukalSelected.size===0){ showToast("Sila pilih sekurang-kurangnya seorang murid."); return; }
-    t.disabled=true;
+    const origTxt2 = t.textContent;
+    t.disabled=true; t.textContent="⏳ Menyimpan...";
     const bulk=[];
     wizard.pukalSelected.forEach(sid=>{ const rec={id:uid("r"),studentId:sid,bidang:wizard.bidang,tajuk:wizard.tajuk,tp:wizard.pukalTp,tarikh,evidence:null}; state.records.push(rec); bulk.push(rec); });
     wizard.pukalSelected.clear(); wizard.pukalTp=null;
     await saveState(); await apiPost("addRecordsBulk",{records:bulk});
     renderStep3(); renderRekodTable();
+    t.textContent = origTxt2; t.disabled=false;
     closeModal("uploadPukalModal");
-    showToast(`${bulk.length} rekod TP disimpan.`);
-    t.disabled=false;
+    showToast(`✅ Berjaya disimpan — ${bulk.length} rekod TP.`);
   }
   if(t.dataset.delRecord){
     if(await customConfirm("Padam rekod ini?")){
@@ -1739,13 +1779,14 @@ document.addEventListener("click", async (e)=>{
       state.examMarks.push(rec); bulk.push(rec);
     });
     if(!bulk.length){ showToast("Sila isi sekurang-kurangnya satu markah."); return; }
-    t.disabled=true;
+    const originalText = t.textContent;
+    t.disabled=true; t.textContent="⏳ Menyimpan...";
     await saveState(); await apiPost("addExamBulk",{records:bulk});
     inputs.forEach(inp=>inp.value="");
     document.querySelectorAll("#examEntryTbody [data-gred-for]").forEach(el=>{ el.textContent="-"; el.style.background="#e5e7eb"; el.style.color="#374151"; });
     renderExamSection();
-    showToast(`${bulk.length} markah disimpan.`);
-    t.disabled=false;
+    t.textContent = originalText; t.disabled=false;
+    showToast(`✅ Berjaya disimpan — ${bulk.length} markah.`);
   }
   if(t.dataset.delExam){
     if(await customConfirm("Padam markah ini?")){
@@ -1849,6 +1890,7 @@ document.addEventListener("click", async (e)=>{
 
   // year tabs dashboard
   if(t.dataset.year){ document.getElementById("dashYearTabs").dataset.year=t.dataset.year; document.querySelectorAll("#dashYearTabs button").forEach(b=>b.classList.toggle("active",b.dataset.year===t.dataset.year)); renderDashClassProgress(t.dataset.year); }
+  if(t.dataset.analysisYear){ analysisSelectedYear=t.dataset.analysisYear; renderAnalysis(); }
 
   // modal close & custom dialogs
   if(t.dataset.close) closeModal(t.dataset.close);
