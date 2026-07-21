@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistem Perekodan TP Pendidikan Islam</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
 :root{
   --navy:#1e2a4a;
@@ -204,7 +203,14 @@ tr:hover td{background:#f8f9fb;}
 .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
 .tabs button{background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:10px;padding:9px 16px;font-weight:700;font-size:13.5px;}
 .tabs button.active{border-color:var(--navy);color:var(--navy);background:var(--gold-bg);}
-.chart-box{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px;height:320px;}
+.chart-box{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px;max-height:420px;overflow-y:auto;}
+.rank-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f2f3f6;}
+.rank-row:last-child{border-bottom:none;}
+.rank-num{width:22px;flex-shrink:0;font-size:11px;font-weight:800;color:var(--muted);}
+.rank-label{width:150px;flex-shrink:0;font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rank-bar-track{flex:1;background:#eef0f4;border-radius:5px;height:16px;overflow:hidden;}
+.rank-bar-fill{height:100%;border-radius:5px;}
+.rank-val{width:36px;flex-shrink:0;text-align:right;font-size:12px;font-weight:800;}
 .small-note{font-size:12px;color:var(--muted);}
 .name-list{max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:8px;}
 .name-list label{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f0f4f2;font-size:13.5px;cursor:pointer;}
@@ -283,7 +289,7 @@ html,body{overflow-x:hidden;max-width:100%;}
     </div>
     <button class="btn-login" id="btnLogin" disabled>⏳ Memuatkan data...</button>
     <div class="login-error" id="loginError"></div>
-    <div class="login-hint">Log masuk kali pertama? Guna <b>admin</b> / <b>admin123</b></div>
+
   </div>
 </div>
 
@@ -397,6 +403,7 @@ html,body{overflow-x:hidden;max-width:100%;}
         <div class="toolbar-row">
           <button class="btn-gold" id="btnUploadPukal">📤 Upload Pukal</button>
           <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
+          <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Semua TP (Kelas Ditapis)</button>
         </div>
         <div class="toolbar-row" style="gap:10px;">
           <select id="rekodFilterKelas" style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--border);font-weight:700;font-size:13.5px;"></select>
@@ -472,7 +479,7 @@ html,body{overflow-x:hidden;max-width:100%;}
             <button data-tab="exam">Analisis UPSA/UASA</button>
           </div>
           <div class="stat-grid" id="analysisStats"></div>
-          <div class="chart-box" id="analysisChartBox"><canvas id="analysisChart"></canvas></div>
+          <div class="chart-box" id="analysisChartBox"></div>
           <div class="table-wrap"><table><thead id="analysisTheadWrap"></thead><tbody id="analysisTbody"></tbody></table></div>
         </div>
       </div>
@@ -1187,6 +1194,9 @@ function renderRekodTable(){
   let studs = sortByClassThenName(state.students.filter(s=>!s.deleted));
   if(rekodFilter.kelas!=="ALL") studs = studs.filter(s=>s.kelas===rekodFilter.kelas);
   if(rekodFilter.search) studs = studs.filter(s=>s.nama.toLowerCase().includes(rekodFilter.search.toLowerCase()));
+  if(rekodFilter.tp!=="ALL") studs = studs.filter(s=>state.records.some(r=>r.studentId===s.id && r.tp===rekodFilter.tp));
+  const isAdmin = session.currentUser && session.currentUser.peranan==="Admin";
+  document.getElementById("btnSahkanSemua").style.display = isAdmin ? "" : "none";
   const tbody = document.getElementById("rekodTbody");
   if(!studs.length){ tbody.innerHTML = `<tr><td colspan="7" class="empty-row">Tiada murid dijumpai.</td></tr>`; return; }
   tbody.innerHTML = studs.map(s=>{
@@ -1199,7 +1209,6 @@ function renderRekodTable(){
     const notDone = Math.max(0, maxSlot - recorded);
     const pct = maxSlot ? Math.round(recorded/maxSlot*100) : 0;
     const latestTp = recs.length ? recs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp : null;
-    const isAdmin = session.currentUser && session.currentUser.peranan==="Admin";
     const sahCell = s.verified
       ? `✅ Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">↩️</button>`:""}`
       : (isAdmin ? `<button class="btn-outline btn-sm" data-verify-murid="${s.id}">Sahkan</button>` : "⏳ Belum Disahkan");
@@ -1285,7 +1294,10 @@ function renderExamSection(){
   `).join("") || `<tr><td colspan="3" class="empty-row">✅ Semua murid kelas ini sudah ada markah ${wizard.examJenis}.</td></tr>`;
 
   const ids = new Set(studs.map(s=>s.id));
-  const rows = state.examMarks.filter(e=>ids.has(e.studentId) && e.jenis===wizard.examJenis).sort((a,b)=>b.tarikh.localeCompare(a.tarikh));
+  const rows = state.examMarks.filter(e=>ids.has(e.studentId) && e.jenis===wizard.examJenis).sort((a,b)=>{
+    const sa = studentById(a.studentId), sb = studentById(b.studentId);
+    return (sa?sa.nama:"").localeCompare(sb?sb.nama:"","ms");
+  });
   const tbody = document.getElementById("examTbody");
   if(!rows.length){ tbody.innerHTML=`<tr><td colspan="5" class="empty-row">Tiada markah ${wizard.examJenis} direkodkan lagi untuk kelas ini.</td></tr>`; return; }
   tbody.innerHTML = rows.map(e=>{
@@ -1297,35 +1309,38 @@ function renderExamSection(){
 
 /* ================= ANALYSIS ================= */
 let analysisSelectedYear = "3";
-function safeChart(ctx, config){
-  try{
-    if(typeof Chart === "undefined") throw new Error("Chart.js tidak dimuat");
-    return new Chart(ctx, config);
-  }catch(e){
-    console.error("Chart render error:",e);
-    const box = document.getElementById("analysisChartBox");
-    const labels = config.data.labels || [];
-    const datasets = config.data.datasets || [];
-    const maxVal = Math.max(1, ...datasets.flatMap(ds=>ds.data));
-    let html = `<div style="padding:10px;">`;
-    labels.forEach((lbl,i)=>{
-      html += `<div style="margin-bottom:10px;">
-        <div style="font-size:12px;font-weight:700;margin-bottom:4px;">${lbl}</div>
-        ${datasets.map(ds=>{
-          const val = ds.data[i]||0;
-          const pct = Math.round(val/maxVal*100);
-          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
-            <div style="width:60px;font-size:10.5px;color:var(--muted);">${ds.label||""}</div>
-            <div style="flex:1;background:#eef0f4;border-radius:4px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${ds.backgroundColor||'#c9973e'};"></div></div>
-            <div style="width:28px;font-size:11px;font-weight:700;">${val}</div>
-          </div>`;
-        }).join("")}
-      </div>`;
-    });
-    html += `</div>`;
-    box.innerHTML = html;
-    return null;
-  }
+function renderRankBars(items){
+  // items: [{label, value, max, color}]
+  if(!items.length) return `<div class="empty-row">Tiada data untuk dipaparkan.</div>`;
+  return items.map((it,i)=>{
+    const pct = it.max>0 ? Math.round((it.value/it.max)*100) : 0;
+    return `<div class="rank-row">
+      <div class="rank-num">${i+1}</div>
+      <div class="rank-label" title="${it.label}">${it.label}</div>
+      <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${pct}%;background:${it.color};"></div></div>
+      <div class="rank-val">${it.value}</div>
+    </div>`;
+  }).join("");
+}
+function renderGradeCompareBars(grades, countsUPSA, countsUASA){
+  const maxVal = Math.max(1, ...grades.map(g=>Math.max(countsUPSA[g],countsUASA[g])));
+  return grades.map(g=>{
+    const pctU = Math.round(countsUPSA[g]/maxVal*100);
+    const pctA = Math.round(countsUASA[g]/maxVal*100);
+    return `<div class="rank-row" style="flex-direction:column;align-items:stretch;gap:4px;">
+      <div style="font-size:12.5px;font-weight:800;">Gred ${g}</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:44px;font-size:10.5px;color:var(--muted);">UPSA</div>
+        <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${pctU}%;background:#1e2a4a;"></div></div>
+        <div class="rank-val">${countsUPSA[g]}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:44px;font-size:10.5px;color:var(--muted);">UASA</div>
+        <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${pctA}%;background:#c9973e;"></div></div>
+        <div class="rank-val">${countsUASA[g]}</div>
+      </div>
+    </div>`;
+  }).join("");
 }
 function renderAnalysisYearTabs(){
   document.getElementById("analysisYearTabs").innerHTML = YEARS.map(y=>`<button data-analysis-year="${y}" class="${analysisSelectedYear===y?'active':''}">Tahun ${y}</button>`).join("");
@@ -1333,7 +1348,6 @@ function renderAnalysisYearTabs(){
 function renderAnalysis(){
   renderAnalysisYearTabs();
   const box = document.getElementById("analysisChartBox");
-  box.innerHTML = `<canvas id="analysisChart"></canvas>`;
   const studs = state.students.filter(s=>!s.deleted && getYearFromClass(s.kelas)===analysisSelectedYear);
   const ids = new Set(studs.map(s=>s.id));
   const records = state.records.filter(r=>ids.has(r.studentId));
@@ -1349,9 +1363,6 @@ function renderAnalysis(){
     <div class="stat-card"><div class="stat-icon" style="background:#e6f4ea;">⭐</div><div><div class="stat-num">${records.filter(r=>r.tp==="TP5"||r.tp==="TP6").length}</div><div class="stat-lbl">Pencapaian TP5-TP6</div></div></div>
   `;
 
-  if(chartRef){ try{ chartRef.destroy(); }catch(e){} chartRef=null; }
-  const ctx = document.getElementById("analysisChart").getContext("2d");
-
   if(analysisTab==="murid"){
     thead.innerHTML = `<tr><th>Murid</th><th>Kelas</th><th>Bil. Rekod</th><th>TP Purata</th><th>Markah UPSA/UASA Purata</th></tr>`;
     const data = sortByClassThenName(studs).map(s=>{
@@ -1362,8 +1373,8 @@ function renderAnalysis(){
       return {s,count:recs.length,avgTp,avgMarkah};
     });
     tbody.innerHTML = data.map(d=>`<tr><td>${genderIcon(d.s.jantina)} ${d.s.nama}</td><td>${d.s.kelas}</td><td>${d.count}</td><td>${d.avgTp?d.avgTp.toFixed(1):"-"}</td><td>${d.avgMarkah!==null?d.avgMarkah.toFixed(0):"-"}</td></tr>`).join("") || `<tr><td colspan="5" class="empty-row">Tiada data.</td></tr>`;
-    const top = data.slice().sort((a,b)=>b.avgTp-a.avgTp).slice(0,12);
-    chartRef = safeChart(ctx,{type:"bar",data:{labels:top.map(d=>d.s.nama.split(" ")[0]),datasets:[{label:"TP Purata",data:top.map(d=>d.avgTp),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:6}}}});
+    const top = data.slice().sort((a,b)=>b.avgTp-a.avgTp).slice(0,15);
+    box.innerHTML = `<div class="small-note" style="margin-bottom:10px;font-weight:700;">🏆 Top 15 — TP Purata Tertinggi</div>` + renderRankBars(top.map(d=>({label:d.s.nama,value:Number(d.avgTp.toFixed(1)),max:6,color:"#c9973e"})));
   }
   if(analysisTab==="bidang"){
     thead.innerHTML = `<tr><th>Bidang</th><th>Bil. Rekod</th><th>TP Purata</th><th>% Capai TP5-TP6</th></tr>`;
@@ -1374,7 +1385,7 @@ function renderAnalysis(){
       return {label:b.label,count:recs.length,avgTp,pct:recs.length?(high/recs.length*100):0};
     });
     tbody.innerHTML = data.map(d=>`<tr><td>${d.label}</td><td>${d.count}</td><td>${d.avgTp?d.avgTp.toFixed(1):"-"}</td><td>${d.pct.toFixed(0)}%</td></tr>`).join("");
-    chartRef = safeChart(ctx,{type:"bar",data:{labels:data.map(d=>d.label),datasets:[{label:"TP Purata",data:data.map(d=>d.avgTp),backgroundColor:"#1e2a4a"}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:6}}}});
+    box.innerHTML = `<div class="small-note" style="margin-bottom:10px;font-weight:700;">📊 TP Purata Setiap Bidang</div>` + renderRankBars(data.map(d=>({label:d.label,value:Number(d.avgTp.toFixed(1)),max:6,color:"#1e2a4a"})));
   }
   if(analysisTab==="tajuk"){
     thead.innerHTML = `<tr><th>Tajuk</th><th>Bidang</th><th>Bil. Rekod</th><th>TP Purata</th></tr>`;
@@ -1382,8 +1393,9 @@ function renderAnalysis(){
     records.forEach(r=>{ const k=r.bidang+"||"+r.tajuk; if(!map[k]) map[k]={bidang:r.bidang,tajuk:r.tajuk,recs:[]}; map[k].recs.push(r); });
     const data = Object.values(map).map(m=>({...m,count:m.recs.length,avgTp:m.recs.reduce((a,r)=>a+parseInt(r.tp.replace("TP","")),0)/m.recs.length})).sort((a,b)=>b.count-a.count);
     tbody.innerHTML = data.map(d=>`<tr><td>${d.tajuk}</td><td>${BIDANG[d.bidang]?.label||d.bidang}</td><td>${d.count}</td><td>${d.avgTp.toFixed(1)}</td></tr>`).join("") || `<tr><td colspan="4" class="empty-row">Tiada data.</td></tr>`;
-    const top = data.slice(0,10);
-    chartRef = safeChart(ctx,{type:"bar",data:{labels:top.map(d=>d.tajuk),datasets:[{label:"Bil. Rekod",data:top.map(d=>d.count),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:"y"}});
+    const top = data.slice(0,15);
+    const maxCount = Math.max(1, ...top.map(d=>d.count));
+    box.innerHTML = top.length ? (`<div class="small-note" style="margin-bottom:10px;font-weight:700;">📚 Top 15 Tajuk — Paling Banyak Direkod</div>` + renderRankBars(top.map(d=>({label:d.tajuk,value:d.count,max:maxCount,color:"#c9973e"})))) : `<div class="empty-row">Tiada data untuk dipaparkan.</div>`;
   }
   if(analysisTab==="exam"){
     thead.innerHTML = `<tr><th>Gred</th><th>UPSA</th><th>UASA</th></tr>`;
@@ -1391,7 +1403,7 @@ function renderAnalysis(){
     const counts={UPSA:{},UASA:{}}; grades.forEach(g=>{counts.UPSA[g]=0;counts.UASA[g]=0;});
     exams.forEach(e=>{ const g=gradeFromMarkah(e.markah); counts[e.jenis][g]++; });
     tbody.innerHTML = grades.map(g=>`<tr><td><span class="badge" style="background:${gradeColor(g)};color:${gradeTextColor(g)};">${g}</span></td><td>${counts.UPSA[g]}</td><td>${counts.UASA[g]}</td></tr>`).join("");
-    chartRef = safeChart(ctx,{type:"bar",data:{labels:grades,datasets:[{label:"UPSA",data:grades.map(g=>counts.UPSA[g]),backgroundColor:"#1e2a4a"},{label:"UASA",data:grades.map(g=>counts.UASA[g]),backgroundColor:"#c9973e"}]},options:{responsive:true,maintainAspectRatio:false}});
+    box.innerHTML = `<div class="small-note" style="margin-bottom:10px;font-weight:700;">📈 Taburan Gred UPSA vs UASA</div>` + renderGradeCompareBars(grades, counts.UPSA, counts.UASA);
   }
 }
 
@@ -1664,6 +1676,23 @@ document.addEventListener("click", async (e)=>{
     closeModal("tambahModal"); renderMuridView(); renderStep3(); renderDashboard();
     showToast("Murid ditambah.");
     t.disabled=false;
+  }
+  if(t.id==="btnSahkanSemua"){
+    if(t.disabled) return;
+    let studs = state.students.filter(s=>!s.deleted);
+    if(rekodFilter.kelas!=="ALL") studs = studs.filter(s=>s.kelas===rekodFilter.kelas);
+    if(rekodFilter.search) studs = studs.filter(s=>s.nama.toLowerCase().includes(rekodFilter.search.toLowerCase()));
+    if(rekodFilter.tp!=="ALL") studs = studs.filter(s=>state.records.some(r=>r.studentId===s.id && r.tp===rekodFilter.tp));
+    const toVerify = studs.filter(s=>!s.verified);
+    if(!toVerify.length){ showToast("Semua murid (ditapis) sudah disahkan."); return; }
+    if(!(await customConfirm(`Sahkan ${toVerify.length} murid sekali gus?`))) return;
+    const origTxt = t.textContent;
+    t.disabled=true; t.textContent="⏳ Menyahkan...";
+    for(const s of toVerify){ s.verified = true; await apiPost("updateStudent", s); }
+    await saveState();
+    renderRekodTable();
+    t.textContent = origTxt; t.disabled=false;
+    showToast(`✅ ${toVerify.length} murid disahkan.`);
   }
   if(t.dataset.verifyMurid){
     const s = studentById(t.dataset.verifyMurid); if(!s) return;
