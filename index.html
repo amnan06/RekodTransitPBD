@@ -154,12 +154,20 @@ h3.section-title{font-size:16.5px;color:var(--navy);margin:0 0 12px;}
 .tp-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
 .tp-btn{padding:9px 18px;border-radius:8px;border:1.5px solid var(--border);background:#fff;font-weight:800;color:var(--text);}
 .tp-btn.selected{color:#fff;border-color:transparent;}
-.tp1{background:#fecaca!important;} .tp1.selected{background:#dc2626!important;}
-.tp2{background:#fed7aa!important;} .tp2.selected{background:#ea580c!important;}
-.tp3{background:#fde68a!important;} .tp3.selected{background:#ca8a04!important;}
-.tp4{background:#bfdbfe!important;} .tp4.selected{background:#2563eb!important;}
-.tp5{background:#99f6e4!important;} .tp5.selected{background:#0d9488!important;}
-.tp6{background:#ddd6fe!important;} .tp6.selected{background:#7c3aed!important;}
+/* Butang pilih TP - neutral sehingga dipilih */
+.tp-btn.tp1.selected{background:#dc2626!important;}
+.tp-btn.tp2.selected{background:#ea580c!important;}
+.tp-btn.tp3.selected{background:#ca8a04!important;}
+.tp-btn.tp4.selected{background:#2563eb!important;}
+.tp-btn.tp5.selected{background:#0d9488!important;}
+.tp-btn.tp6.selected{background:#7c3aed!important;}
+/* Badge paparan TP (dalam jadual) - sentiasa berwarna untuk senang imbas */
+.badge.tp1{background:#fecaca;color:#991b1b;}
+.badge.tp2{background:#fed7aa;color:#9a3412;}
+.badge.tp3{background:#fde68a;color:#92400e;}
+.badge.tp4{background:#bfdbfe;color:#1e40af;}
+.badge.tp5{background:#99f6e4;color:#0f766e;}
+.badge.tp6{background:#ddd6fe;color:#5b21b6;}
 .evidence-row{display:flex;align-items:center;gap:12px;margin-top:6px;flex-wrap:wrap;}
 .evidence-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--border);}
 .student-list-box{max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:10px;background:#fff;padding:10px;
@@ -402,7 +410,7 @@ html,body{overflow-x:hidden;max-width:100%;}
         <div class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Nama</th><th>Kelas</th><th>TP</th><th>Eviden</th><th>Kemajuan</th><th>Sah</th><th></th></tr></thead>
+              <thead><tr><th>Nama</th><th>Kelas</th><th>TP</th><th>Rekod</th><th>Kemajuan</th><th>Sah</th><th></th></tr></thead>
               <tbody id="rekodTbody"></tbody>
             </table>
           </div>
@@ -472,10 +480,15 @@ html,body{overflow-x:hidden;max-width:100%;}
       <div class="view" data-view="cetak">
         <h2 class="page-title">Cetak Laporan</h2>
         <div class="card" style="max-width:480px;">
-          <button class="btn-primary btn-full" style="margin-bottom:12px;" id="printUpsaAll">Keputusan UPSA (Semua Murid)</button>
-          <button class="btn-primary btn-full" style="margin-bottom:12px;" id="printUasaAll">Keputusan UASA (Semua Murid)</button>
-          <button class="btn-gold btn-full" style="margin-bottom:12px;" id="printIndividu">Rekod Perkembangan Murid (Individu)</button>
-          <button class="btn-gold btn-full" id="printAll">Rekod Perkembangan Murid (Semua Murid)</button>
+          <div class="field" style="margin-bottom:16px;"><label>Pilih Kelas (untuk laporan Semua Murid)</label><select id="cetakKelasSelect"></select></div>
+          <button class="btn-primary btn-full" style="margin-bottom:12px;" id="printUpsaAll">Keputusan UPSA (Semua Murid Kelas Ini)</button>
+          <button class="btn-primary btn-full" style="margin-bottom:12px;" id="printUasaAll">Keputusan UASA (Semua Murid Kelas Ini)</button>
+          <button class="btn-gold btn-full" id="printAll">Rekod Perkembangan Murid (Semua Murid Kelas Ini)</button>
+        </div>
+        <div class="card" style="max-width:480px;">
+          <h3 class="section-title">Cetak Rekod Individu</h3>
+          <div class="field" style="margin-bottom:16px;"><label>Pilih Murid</label><select id="cetakMuridSelect"></select></div>
+          <button class="btn-gold btn-full" id="printIndividu">Cetak Rekod Murid Ini</button>
         </div>
       </div>
 
@@ -1064,26 +1077,26 @@ function renderDashboard(){
   if(state.settings.deadlineText){
     alertsHtml += `<div class="alert-box"><div class="a-icon">⚠️</div><div><b>${state.settings.deadlineText}</b><div class="a-sub">${daysLeft!==null ? (daysLeft>=0? daysLeft+" hari lagi" : "Tarikh sudah lepas") : ""}</div></div></div>`;
   }
-  alertsHtml += `<div class="alert-box"><div class="a-icon">📋</div><div><b>${belumEvidence} murid masih belum hantar eviden</b><div class="a-sub">Lihat Senarai Murid untuk perincian</div></div></div>`;
+  alertsHtml += `<div class="alert-box"><div class="a-icon">📋</div><div><b>${belumMula} murid masih belum ada rekod TP</b><div class="a-sub">Lihat Senarai Murid untuk perincian</div></div></div>`;
   const weekAgo = Date.now() - 7*86400000;
-  const thisWeek = state.records.filter(r=>r.evidence && new Date(r.tarikh).getTime()>=weekAgo).length;
-  alertsHtml += `<div class="alert-box"><div class="a-icon">📥</div><div><b>Penghantaran minggu ini</b><div class="a-sub">${thisWeek} eviden dihantar</div></div></div>`;
+  const thisWeek = state.records.filter(r=>new Date(r.tarikh).getTime()>=weekAgo).length;
+  alertsHtml += `<div class="alert-box"><div class="a-icon">📥</div><div><b>Rekod minggu ini</b><div class="a-sub">${thisWeek} rekod TP disimpan</div></div></div>`;
   document.getElementById("dashAlerts").innerHTML = alertsHtml;
 }
 function renderDashClassProgress(year){
   const classesForYear = CLASSES.filter(c=>getYearFromClass(c)===year);
   const maxTajuk = totalTajukForYear(year);
   const html = classesForYear.map(kelas=>{
-    const studs = state.students.filter(s=>s.kelas===kelas);
+    const studs = state.students.filter(s=>s.kelas===kelas && !s.deleted);
     const studIds = new Set(studs.map(s=>s.id));
-    const evidenceCount = state.records.filter(r=>studIds.has(r.studentId) && r.evidence).length;
+    const recordCount = state.records.filter(r=>studIds.has(r.studentId)).length;
     const maxSlot = studs.length * maxTajuk;
-    const pct = maxSlot ? Math.round(evidenceCount/maxSlot*100) : 0;
+    const pct = maxSlot ? Math.round(recordCount/maxSlot*100) : 0;
     return `<div class="class-progress-card">
       <div class="ring" style="--pct:${pct};"><div class="ring-inner">${pct}%</div></div>
       <div class="cp-info">
         <div class="cname">${kelas.toUpperCase()}</div>
-        <div class="cmeta">${studs.length} murid · ${evidenceCount} / ${maxSlot} eviden</div>
+        <div class="cmeta">${studs.length} murid · ${recordCount} / ${maxSlot} tajuk direkod</div>
         <div class="cp-bar"><div class="cp-bar-fill" style="width:${pct}%;"></div></div>
       </div>
     </div>`;
@@ -1180,10 +1193,10 @@ function renderRekodTable(){
     if(rekodFilter.tp!=="ALL") recs = recs.filter(r=>r.tp===rekodFilter.tp);
     const year = getYearFromClass(s.kelas);
     const maxSlot = totalTajukForYear(year);
-    const withEv = recs.filter(r=>r.evidence).length;
-    const withoutEv = recs.filter(r=>!r.evidence).length;
-    const notDone = Math.max(0, maxSlot - recs.length);
-    const pct = maxSlot ? Math.round(withEv/maxSlot*100) : 0;
+    const recorded = recs.length;
+    const withEvidence = recs.filter(r=>r.evidence).length;
+    const notDone = Math.max(0, maxSlot - recorded);
+    const pct = maxSlot ? Math.round(recorded/maxSlot*100) : 0;
     const latestTp = recs.length ? recs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp : null;
     const isAdmin = session.currentUser && session.currentUser.peranan==="Admin";
     const sahCell = s.verified
@@ -1193,10 +1206,10 @@ function renderRekodTable(){
       <td><div class="acc-row"><div class="avatar-circle">${initials(s.nama)}</div><b>${s.nama}</b></div></td>
       <td>${s.kelas}</td>
       <td>${latestTp?`<span class="badge ${tpClass(latestTp)}">${latestTp}</span>`:"-"}</td>
-      <td>${withEv}</td>
+      <td>${recorded}${withEvidence?` <span class="small-note">(📎${withEvidence})</span>`:""}</td>
       <td>
         <div class="cp-bar" style="width:120px;"><div class="cp-bar-fill" style="width:${pct}%;"></div></div>
-        <div style="font-size:11px;margin-top:3px;">${pct}% · ✅${withEv} ⏱${withoutEv} 🔴${notDone}</div>
+        <div style="font-size:11px;margin-top:3px;">${pct}% · ✅${recorded} direkod · 🔴${notDone} belum</div>
       </td>
       <td>${sahCell}</td>
       <td><button class="btn-outline btn-sm" data-lihat-murid="${s.id}">Lihat</button></td>
@@ -1502,42 +1515,47 @@ document.addEventListener("click", async (e)=>{
     closeModal("kriteriaModal"); showToast("Kriteria disimpan.");
   }
 
-  if(t.id==="modeIndividu"){ wizard.mode="individu"; t.classList.add("active"); document.getElementById("modePukal").classList.remove("active"); document.getElementById("individuForm").style.display="block"; document.getElementById("pukalForm").style.display="none"; }
-  if(t.id==="modePukal"){ wizard.mode="pukal"; t.classList.add("active"); document.getElementById("modeIndividu").classList.remove("active"); document.getElementById("pukalForm").style.display="block"; document.getElementById("individuForm").style.display="none"; }
-
   if(t.dataset.tp){ const row=t.closest(".tp-row"); if(row) row.querySelectorAll(".tp-btn").forEach(b=>b.classList.remove("selected")); t.classList.add("selected"); }
   if(t.dataset.ptp){ wizard.pukalTp=t.dataset.ptp; renderStep3(); }
   if(t.id==="btnPilihSemua"){ const studs=currentStudents(); if(wizard.pukalSelected.size===studs.length) wizard.pukalSelected.clear(); else studs.forEach(s=>wizard.pukalSelected.add(s.id)); renderPukalStudentList(); }
   if(t.dataset.pid){ if(t.checked) wizard.pukalSelected.add(t.dataset.pid); else wizard.pukalSelected.delete(t.dataset.pid); renderPukalStudentList(); }
 
   if(t.id==="btnSimpanLihatRekod"){
+    if(t.disabled) return;
     const bidang = document.getElementById("lihatBidang").value;
     const tajuk = document.getElementById("lihatTajuk").value;
     const tarikh = document.getElementById("lihatTarikh").value || todayStr();
     const tpBtn = document.querySelector("#lihatTpRow .tp-btn.selected");
     if(!bidang || !tajuk){ showToast("Sila pilih bidang & tajuk."); return; }
     if(!tpBtn){ showToast("Sila pilih Tahap Penguasaan (TP)."); return; }
+    t.disabled=true;
     const evidenceImg = document.getElementById("lihatEvidenceThumb").style.display!=="none" ? document.getElementById("lihatEvidenceThumb").src : null;
     const newRecord = { id:uid("r"), studentId:lihatMuridId, bidang, tajuk, tp:tpBtn.dataset.tp, tarikh, evidence:evidenceImg };
     state.records.push(newRecord); await saveState();
-    apiPost("addRecord", Object.assign({}, newRecord, { evidenceBase64: evidenceImg }));
+    await apiPost("addRecord", Object.assign({}, newRecord, { evidenceBase64: evidenceImg }));
     document.querySelectorAll("#lihatTpRow .tp-btn").forEach(b=>b.classList.remove("selected"));
     document.getElementById("lihatEvidenceThumb").style.display="none";
     const evInput = document.getElementById("lihatEvidence"); if(evInput) evInput.value="";
     renderLihatMuridModal(lihatMuridId);
     renderRekodTable();
     showToast("Rekod disimpan.");
+    t.disabled=false;
   }
   if(t.dataset.lihatBidangSel){ /* placeholder */ }
   if(t.id==="btnSimpanSemua"){
+    if(t.disabled) return;
     const tarikh = document.getElementById("pukalTarikh").value || todayStr();
     if(!wizard.pukalTp){ showToast("Sila pilih Tahap Penguasaan (TP)."); return; }
     if(wizard.pukalSelected.size===0){ showToast("Sila pilih sekurang-kurangnya seorang murid."); return; }
+    t.disabled=true;
     const bulk=[];
     wizard.pukalSelected.forEach(sid=>{ const rec={id:uid("r"),studentId:sid,bidang:wizard.bidang,tajuk:wizard.tajuk,tp:wizard.pukalTp,tarikh,evidence:null}; state.records.push(rec); bulk.push(rec); });
     wizard.pukalSelected.clear(); wizard.pukalTp=null;
-    await saveState(); apiPost("addRecordsBulk",{records:bulk});
-    renderStep3(); renderRecordsTable();
+    await saveState(); await apiPost("addRecordsBulk",{records:bulk});
+    renderStep3(); renderRekodTable();
+    closeModal("uploadPukalModal");
+    showToast(`${bulk.length} rekod TP disimpan.`);
+    t.disabled=false;
   }
   if(t.dataset.delRecord){
     if(await customConfirm("Padam rekod ini?")){
@@ -1592,6 +1610,7 @@ document.addEventListener("click", async (e)=>{
     document.getElementById("newStudentName").value=""; openModal("tambahModal");
   }
   if(t.id==="btnConfirmTambah"){
+    if(t.disabled) return;
     const nama=document.getElementById("newStudentName").value.trim();
     const kelas=document.getElementById("newStudentClass").value;
     if(!nama){ showToast("Sila masukkan nama murid."); return; }
@@ -1599,10 +1618,12 @@ document.addEventListener("click", async (e)=>{
     if(dup){
       if(!(await customConfirm(`"${nama.toUpperCase()}" sudah wujud dalam ${kelas}. Tambah juga (jadi berganda)?`))) return;
     }
+    t.disabled=true;
     const s = {id:uid("s"),nama:nama.toUpperCase(),kelas,jantina:detectGender(nama),deleted:false};
-    state.students.push(s); await saveState(); apiPost("addStudent",s);
+    state.students.push(s); await saveState(); await apiPost("addStudent",s);
     closeModal("tambahModal"); renderMuridView(); renderStep3(); renderDashboard();
     showToast("Murid ditambah.");
+    t.disabled=false;
   }
   if(t.dataset.verifyMurid){
     const s = studentById(t.dataset.verifyMurid); if(!s) return;
@@ -1663,8 +1684,10 @@ document.addEventListener("click", async (e)=>{
   }
   if(t.id==="btnImportCsv"){ document.getElementById("csvTextarea").value=""; openModal("importCsvModal"); }
   if(t.id==="btnConfirmImportCsv"){
+    if(t.disabled) return;
     const raw = document.getElementById("csvTextarea").value.trim();
     if(!raw){ showToast("Sila tampal senarai murid."); return; }
+    t.disabled=true; t.textContent="⏳ Mengimport...";
     const lines = raw.split("\n").map(l=>l.trim()).filter(Boolean);
     const existingKeys = new Set(state.students.filter(s=>!s.deleted).map(s=>(s.nama+"|"+s.kelas).toUpperCase()));
     function normalizeKelas(input){
@@ -1673,20 +1696,23 @@ document.addEventListener("click", async (e)=>{
     }
     let count=0, skipped=0;
     const failedLines=[];
-    lines.forEach(line=>{
+    for(const line of lines){
       const parts = line.split(",");
-      if(parts.length<2){ failedLines.push(line+"  ← format salah (kena ada koma: Nama,Kelas)"); return; }
+      if(parts.length<2){ failedLines.push(line+"  ← format salah (kena ada koma: Nama,Kelas)"); continue; }
       const nama = parts[0].trim();
       const kelasMatched = normalizeKelas(parts[1]);
-      if(!nama){ failedLines.push(line+"  ← nama kosong"); return; }
-      if(!kelasMatched){ failedLines.push(line+`  ← kelas "${parts[1].trim()}" tak dikenali`); return; }
+      if(!nama){ failedLines.push(line+"  ← nama kosong"); continue; }
+      if(!kelasMatched){ failedLines.push(line+`  ← kelas "${parts[1].trim()}" tak dikenali`); continue; }
       const key = (nama+"|"+kelasMatched).toUpperCase();
-      if(existingKeys.has(key)){ skipped++; return; }
+      if(existingKeys.has(key)){ skipped++; continue; }
       existingKeys.add(key);
       const s = {id:uid("s"),nama:nama.toUpperCase(),kelas:kelasMatched,jantina:detectGender(nama),deleted:false};
-      state.students.push(s); apiPost("addStudent",s); count++;
-    });
+      state.students.push(s);
+      await apiPost("addStudent",s);
+      count++;
+    }
     await saveState(); renderMuridView(); renderDashboard();
+    t.disabled=false; t.textContent="Import Sekarang";
     if(failedLines.length){
       document.getElementById("csvTextarea").value = failedLines.map(f=>f.split("  ←")[0]).join("\n");
       showToast(`${count} diimport, ${skipped} dilangkau (dah wujud), ${failedLines.length} GAGAL (baki dalam kotak, sila baiki).`);
@@ -1700,6 +1726,7 @@ document.addEventListener("click", async (e)=>{
   if(t.id==="jenisUPSA"){ wizard.examJenis="UPSA"; t.classList.add("active"); document.getElementById("jenisUASA").classList.remove("active"); renderExamSection(); }
   if(t.id==="jenisUASA"){ wizard.examJenis="UASA"; t.classList.add("active"); document.getElementById("jenisUPSA").classList.remove("active"); renderExamSection(); }
   if(t.id==="btnSimpanMarkahSemua"){
+    if(t.disabled) return;
     const tarikh=document.getElementById("examTarikh").value || todayStr();
     const inputs = document.querySelectorAll("#examEntryTbody input[data-markah-for]");
     const bulk=[];
@@ -1712,11 +1739,13 @@ document.addEventListener("click", async (e)=>{
       state.examMarks.push(rec); bulk.push(rec);
     });
     if(!bulk.length){ showToast("Sila isi sekurang-kurangnya satu markah."); return; }
-    await saveState(); apiPost("addExamBulk",{records:bulk});
+    t.disabled=true;
+    await saveState(); await apiPost("addExamBulk",{records:bulk});
     inputs.forEach(inp=>inp.value="");
     document.querySelectorAll("#examEntryTbody [data-gred-for]").forEach(el=>{ el.textContent="-"; el.style.background="#e5e7eb"; el.style.color="#374151"; });
     renderExamSection();
     showToast(`${bulk.length} markah disimpan.`);
+    t.disabled=false;
   }
   if(t.dataset.delExam){
     if(await customConfirm("Padam markah ini?")){
@@ -1756,22 +1785,25 @@ document.addEventListener("click", async (e)=>{
     openModal("guruModal");
   }
   if(t.id==="btnSimpanGuru"){
+    if(t.disabled) return;
     const nama=document.getElementById("guruNama").value.trim();
     const username=document.getElementById("guruUsername").value.trim();
     const password=document.getElementById("guruPassword").value;
     const peranan=document.getElementById("guruPeranan").value;
     const telefon=document.getElementById("guruTelefon").value.trim();
     if(!nama||!username){ showToast("Sila lengkapkan nama & nama pengguna."); return; }
+    if(!editingGuruId && !password){ showToast("Sila masukkan kata laluan untuk akaun baharu."); return; }
+    t.disabled=true;
     if(editingGuruId){
       const u = state.users.find(x=>x.id===editingGuruId);
       u.nama=nama; u.username=username; if(password) u.password=password; u.peranan=peranan; u.telefon=telefon;
-      await saveState(); apiPost("updateUser",{id:u.id,nama:u.nama,username:u.username,password:u.password,peranan:u.peranan,telefon:u.telefon});
+      await saveState(); await apiPost("updateUser",{id:u.id,nama:u.nama,username:u.username,password:u.password,peranan:u.peranan,telefon:u.telefon});
     } else {
-      if(!password){ showToast("Sila masukkan kata laluan untuk akaun baharu."); return; }
       const newUser={id:uid("u"),nama,username,password,peranan,telefon,lastLogin:""};
-      state.users.push(newUser); await saveState(); apiPost("addUser",newUser);
+      state.users.push(newUser); await saveState(); await apiPost("addUser",newUser);
     }
     closeModal("guruModal"); renderGuruView(); showToast("Akaun disimpan.");
+    t.disabled=false;
   }
   if(t.dataset.delGuru){
     if(t.dataset.delGuru===session.currentUser.id){ showToast("Tidak boleh padam akaun sendiri."); return; }
