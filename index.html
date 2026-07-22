@@ -228,7 +228,7 @@ tr:hover td{background:#f8f9fb;}
 @media print{
   body *{visibility:hidden;}
   #printArea, #printArea *{visibility:visible;}
-  #printArea{position:absolute;top:0;left:0;width:100%;padding:20px;}
+  #printArea{position:absolute;top:0;left:0;width:100%;padding:20px;display:block!important;}
   .no-print,.sidebar,.topbar{display:none!important;}
 }
 #printArea{display:none;}
@@ -1239,7 +1239,11 @@ function renderLihatMuridModal(studentId){
   bidangSel.innerHTML = Object.entries(BIDANG).map(([k,b])=>`<option value="${k}">${b.label}</option>`).join("");
   function refreshTajukOptions(){
     const list = getTajukList(year, bidangSel.value).all;
-    document.getElementById("lihatTajuk").innerHTML = list.map(t=>`<option value="${t}">${t}</option>`).join("");
+    const recordedTajuk = new Set(state.records.filter(r=>r.studentId===studentId && r.bidang===bidangSel.value).map(r=>r.tajuk));
+    const remaining = list.filter(t=>!recordedTajuk.has(t));
+    document.getElementById("lihatTajuk").innerHTML = remaining.length
+      ? remaining.map(t=>`<option value="${t}">${t}</option>`).join("")
+      : `<option value="">✅ Semua tajuk bidang ini sudah direkod</option>`;
   }
   bidangSel.onchange = refreshTajukOptions;
   refreshTajukOptions();
@@ -1601,7 +1605,10 @@ document.addEventListener("click", async (e)=>{
     t.disabled=true; t.textContent="⏳ Menyimpan...";
     const evidenceImg = document.getElementById("lihatEvidenceThumb").style.display!=="none" ? document.getElementById("lihatEvidenceThumb").src : null;
     const newRecord = { id:uid("r"), studentId:lihatMuridId, bidang, tajuk, tp:tpBtn.dataset.tp, tarikh, evidence:evidenceImg };
-    state.records.push(newRecord); await saveState();
+    state.records.push(newRecord);
+    const stu = studentById(lihatMuridId);
+    if(stu && stu.verified){ stu.verified = false; apiPost("updateStudent", stu); }
+    await saveState();
     await apiPost("addRecord", Object.assign({}, newRecord, { evidenceBase64: evidenceImg }));
     document.querySelectorAll("#lihatTpRow .tp-btn").forEach(b=>b.classList.remove("selected"));
     document.getElementById("lihatEvidenceThumb").style.display="none";
@@ -1620,7 +1627,12 @@ document.addEventListener("click", async (e)=>{
     const origTxt2 = t.textContent;
     t.disabled=true; t.textContent="⏳ Menyimpan...";
     const bulk=[];
-    wizard.pukalSelected.forEach(sid=>{ const rec={id:uid("r"),studentId:sid,bidang:wizard.bidang,tajuk:wizard.tajuk,tp:wizard.pukalTp,tarikh,evidence:null}; state.records.push(rec); bulk.push(rec); });
+    wizard.pukalSelected.forEach(sid=>{
+      const rec={id:uid("r"),studentId:sid,bidang:wizard.bidang,tajuk:wizard.tajuk,tp:wizard.pukalTp,tarikh,evidence:null};
+      state.records.push(rec); bulk.push(rec);
+      const stu = studentById(sid);
+      if(stu && stu.verified){ stu.verified = false; apiPost("updateStudent", stu); }
+    });
     wizard.pukalSelected.clear(); wizard.pukalTp=null;
     await saveState(); await apiPost("addRecordsBulk",{records:bulk});
     renderStep3(); renderRekodTable();
