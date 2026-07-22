@@ -674,9 +674,10 @@ html,body{overflow-x:hidden;max-width:100%;}
 </div>
 
 <div class="modal-overlay" id="lihatMuridModal">
-  <div class="modal-box" style="max-width:640px;">
+  <div class="modal-box" style="max-width:760px;">
     <button class="close-x" data-close="lihatMuridModal">✕</button>
     <h3 id="lihatMuridNama">Rekod Murid</h3>
+    <div id="lihatTpSummary"></div>
     <div class="form-panel">
       <div class="form-row">
         <div class="field"><label>Bidang</label><select id="lihatBidang"></select></div>
@@ -879,6 +880,38 @@ function gradeFromMarkah(m){ if(m>=80)return"A"; if(m>=60)return"B"; if(m>=40)re
 function gradeColor(g){ return {A:"#bbf7d0",B:"#bfdbfe",C:"#fde68a",D:"#fed7aa",E:"#fecaca"}[g]||"#e5e7eb"; }
 function gradeTextColor(g){ return {A:"#166534",B:"#1e40af",C:"#92400e",D:"#9a3412",E:"#991b1b"}[g]||"#374151"; }
 function tpClass(tp){ return "tp"+tp.replace("TP",""); }
+
+/* ================= 3-TIER TP CALCULATION (Tajuk -> Bidang -> Akhir) ================= */
+function scoreToTP(score){
+  if(score==null) return null;
+  if(score>=5.5) return 6;
+  if(score>=4.5) return 5;
+  if(score>=3.5) return 4;
+  if(score>=2.5) return 3;
+  if(score>=1.5) return 2;
+  return 1;
+}
+function computeBidangScores(studentId){
+  const result = {};
+  Object.entries(BIDANG).forEach(([key,b])=>{
+    const recs = state.records.filter(r=>r.studentId===studentId && r.bidang===key);
+    const tpVals = recs.map(r=>parseInt(r.tp.replace("TP","")));
+    const score = tpVals.length ? tpVals.reduce((a,v)=>a+v,0)/tpVals.length : null;
+    result[key] = { key, label:b.label, count:recs.length, tpList: recs.map(r=>r.tp), score };
+  });
+  return result;
+}
+function computeStudentTpSummary(studentId){
+  const bidangScores = computeBidangScores(studentId);
+  const validBidang = Object.values(bidangScores).filter(b=>b.score!=null);
+  const skorBidang = validBidang.length ? validBidang.reduce((a,b)=>a+b.score,0)/validBidang.length : null;
+  const allRecs = state.records.filter(r=>r.studentId===studentId);
+  const skorTajuk = allRecs.length ? allRecs.reduce((a,r)=>a+parseInt(r.tp.replace("TP","")),0)/allRecs.length : null;
+  const tp5PlusCount = allRecs.filter(r=>r.tp==="TP5"||r.tp==="TP6").length;
+  const cadangan = skorBidang!=null ? scoreToTP(skorBidang) : null;
+  const diverge = (skorBidang!=null && skorTajuk!=null) ? Math.abs(skorBidang-skorTajuk) >= 0.5 : false;
+  return { bidangScores, skorBidang, skorTajuk, tp5PlusCount, totalRecs: allRecs.length, cadangan, diverge };
+}
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtDate(iso){ if(!iso) return "-"; const datePart = String(iso).split("T")[0]; const [y,m,d]=datePart.split("-"); if(!y||!m||!d) return datePart; return `${d}/${m}/${y}`; }
 function currentStudents(){ return sortByName(state.students.filter(s=>s.kelas===state.settings.currentClass && !s.deleted)); }
@@ -1211,7 +1244,10 @@ function renderRekodTable(){
     const pct = maxSlot ? Math.round(recorded/maxSlot*100) : 0;
     const latestTp = recs.length ? recs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp : null;
     const allRecs = state.records.filter(r=>r.studentId===s.id);
-    const tpAkhir = allRecs.length ? Math.round(allRecs.reduce((a,r)=>a+parseInt(r.tp.replace("TP","")),0)/allRecs.length) : null;
+    const summary = computeStudentTpSummary(s.id);
+    const tpAkhirCell = summary.cadangan
+      ? `<span class="badge ${tpClass('TP'+summary.cadangan)}" title="Skor Bidang: ${summary.skorBidang.toFixed(2)} · Skor Tajuk: ${summary.skorTajuk.toFixed(2)} · TP5/6: ${summary.tp5PlusCount}/${allRecs.length}">TP${summary.cadangan}</span>${summary.diverge?` <span title="Skor Bidang & Tajuk berbeza ketara — Pertimbangan Guru Diperlukan">⚠️</span>`:""}`
+      : "-";
     const sahCell = s.verified
       ? `✅ Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">↩️</button>`:""}`
       : (isAdmin ? `<button class="btn-outline btn-sm" data-verify-murid="${s.id}">Sahkan</button>` : "⏳ Belum Disahkan");
@@ -1219,7 +1255,7 @@ function renderRekodTable(){
       <td><div class="acc-row"><div class="avatar-circle">${initials(s.nama)}</div><b>${s.nama}</b></div></td>
       <td>${s.kelas}</td>
       <td>${latestTp?`<span class="badge ${tpClass(latestTp)}">${latestTp}</span>`:"-"}</td>
-      <td>${tpAkhir?`<span class="badge ${tpClass('TP'+tpAkhir)}" title="Purata: ${(allRecs.reduce((a,r)=>a+parseInt(r.tp.replace('TP','')),0)/allRecs.length).toFixed(1)}">TP${tpAkhir}</span>`:"-"}</td>
+      <td>${tpAkhirCell}</td>
       <td>${recorded}${withEvidence?` <span class="small-note">(📎${withEvidence})</span>`:""}</td>
       <td>
         <div class="cp-bar" style="width:120px;"><div class="cp-bar-fill" style="width:${pct}%;"></div></div>
@@ -1235,6 +1271,38 @@ function renderLihatMuridModal(studentId){
   const s = studentById(studentId); if(!s) return;
   document.getElementById("lihatMuridNama").textContent = `Rekod: ${s.nama}`;
   const year = getYearFromClass(s.kelas);
+
+  const summary = computeStudentTpSummary(studentId);
+  const summaryBox = document.getElementById("lihatTpSummary");
+  if(summary.totalRecs===0){
+    summaryBox.innerHTML = `<div class="small-note" style="margin-bottom:14px;">Belum ada rekod TP untuk murid ini lagi.</div>`;
+  } else {
+    const bidangRows = Object.values(summary.bidangScores).map(b=>{
+      const bidangTp = scoreToTP(b.score);
+      return `<tr>
+        <td>${b.label}</td>
+        <td>${b.count}</td>
+        <td>${b.tpList.map(t=>`<span class="badge ${tpClass(t)}" style="margin-right:2px;font-size:10.5px;padding:2px 7px;">${t}</span>`).join("") || "-"}</td>
+        <td>${b.score!=null?b.score.toFixed(2):"-"}</td>
+        <td>${bidangTp?`<span class="badge ${tpClass('TP'+bidangTp)}">TP${bidangTp}</span>`:"-"}</td>
+      </tr>`;
+    }).join("");
+    summaryBox.innerHTML = `
+      <div class="stat-grid" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-icon" style="background:#e6ecfb;">📊</div><div><div class="stat-num">${summary.skorBidang.toFixed(2)}</div><div class="stat-lbl">Skor Penguasaan Bidang</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#fdf1da;">📚</div><div><div class="stat-num">${summary.skorTajuk.toFixed(2)}</div><div class="stat-lbl">Skor Penguasaan Tajuk</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#e6f4ea;">⭐</div><div><div class="stat-num">${summary.tp5PlusCount}/${summary.totalRecs}</div><div class="stat-lbl">Tajuk TP5-TP6 (${Math.round(summary.tp5PlusCount/summary.totalRecs*100)}%)</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:${summary.diverge?'#fbe7e3':'#f1e9fb'};">🎯</div><div><div class="stat-num">TP${summary.cadangan}</div><div class="stat-lbl">Cadangan TP Akhir</div></div></div>
+      </div>
+      ${summary.diverge ? `<div class="alert-box" style="margin-bottom:14px;"><div class="a-icon">⚠️</div><div><b>Pertimbangan Guru Diperlukan</b><div class="a-sub">Skor Bidang (${summary.skorBidang.toFixed(2)}) dan Skor Tajuk (${summary.skorTajuk.toFixed(2)}) berbeza ketara. Sila semak sebelum mengesahkan TP Akhir.</div></div></div>` : ""}
+      <div class="table-wrap" style="margin-bottom:16px;max-height:220px;">
+        <table>
+          <thead><tr><th>Bidang</th><th>Bil. Tajuk</th><th>Senarai TP</th><th>Skor Bidang</th><th>TP Bidang</th></tr></thead>
+          <tbody>${bidangRows}</tbody>
+        </table>
+      </div>`;
+  }
+
   const bidangSel = document.getElementById("lihatBidang");
   bidangSel.innerHTML = Object.entries(BIDANG).map(([k,b])=>`<option value="${k}">${b.label}</option>`).join("");
   function refreshTajukOptions(){
