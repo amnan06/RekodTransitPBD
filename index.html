@@ -417,7 +417,7 @@ html,body{overflow-x:hidden;max-width:100%;}
         <div class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Nama</th><th>Kelas</th><th>TP</th><th>Rekod</th><th>Kemajuan</th><th>Sah</th><th></th></tr></thead>
+              <thead><tr><th>Nama</th><th>Kelas</th><th>TP Terkini</th><th>TP Akhir</th><th>Rekod</th><th>Kemajuan</th><th>Sah</th><th></th></tr></thead>
               <tbody id="rekodTbody"></tbody>
             </table>
           </div>
@@ -1035,6 +1035,7 @@ function switchView(view){
   if(view==="tajuk") renderTajukManage();
   if(view==="exam") renderExamSection();
   if(view==="analisis") renderAnalysis();
+  if(view==="cetak") renderCetakView();
   if(view==="guru") renderGuruView();
   if(view==="selenggara") renderSelenggaraView();
 }
@@ -1198,7 +1199,7 @@ function renderRekodTable(){
   const isAdmin = session.currentUser && session.currentUser.peranan==="Admin";
   document.getElementById("btnSahkanSemua").style.display = isAdmin ? "" : "none";
   const tbody = document.getElementById("rekodTbody");
-  if(!studs.length){ tbody.innerHTML = `<tr><td colspan="7" class="empty-row">Tiada murid dijumpai.</td></tr>`; return; }
+  if(!studs.length){ tbody.innerHTML = `<tr><td colspan="8" class="empty-row">Tiada murid dijumpai.</td></tr>`; return; }
   tbody.innerHTML = studs.map(s=>{
     let recs = state.records.filter(r=>r.studentId===s.id);
     if(rekodFilter.tp!=="ALL") recs = recs.filter(r=>r.tp===rekodFilter.tp);
@@ -1209,6 +1210,8 @@ function renderRekodTable(){
     const notDone = Math.max(0, maxSlot - recorded);
     const pct = maxSlot ? Math.round(recorded/maxSlot*100) : 0;
     const latestTp = recs.length ? recs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp : null;
+    const allRecs = state.records.filter(r=>r.studentId===s.id);
+    const tpAkhir = allRecs.length ? Math.round(allRecs.reduce((a,r)=>a+parseInt(r.tp.replace("TP","")),0)/allRecs.length) : null;
     const sahCell = s.verified
       ? `✅ Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">↩️</button>`:""}`
       : (isAdmin ? `<button class="btn-outline btn-sm" data-verify-murid="${s.id}">Sahkan</button>` : "⏳ Belum Disahkan");
@@ -1216,6 +1219,7 @@ function renderRekodTable(){
       <td><div class="acc-row"><div class="avatar-circle">${initials(s.nama)}</div><b>${s.nama}</b></div></td>
       <td>${s.kelas}</td>
       <td>${latestTp?`<span class="badge ${tpClass(latestTp)}">${latestTp}</span>`:"-"}</td>
+      <td>${tpAkhir?`<span class="badge ${tpClass('TP'+tpAkhir)}" title="Purata: ${(allRecs.reduce((a,r)=>a+parseInt(r.tp.replace('TP','')),0)/allRecs.length).toFixed(1)}">TP${tpAkhir}</span>`:"-"}</td>
       <td>${recorded}${withEvidence?` <span class="small-note">(📎${withEvidence})</span>`:""}</td>
       <td>
         <div class="cp-bar" style="width:120px;"><div class="cp-bar-fill" style="width:${pct}%;"></div></div>
@@ -1409,40 +1413,55 @@ function renderAnalysis(){
 
 /* ================= PRINT ================= */
 function buildPrintHeader(){
-  return `<div style="text-align:center;margin-bottom:20px;"><h2 style="margin:0;">${state.settings.schoolName}</h2><h3 style="margin:4px 0;">REKOD PERKEMBANGAN MURID PENDIDIKAN ISLAM</h3><div>${state.settings.currentClass.toUpperCase()}</div></div>`;
+  return `<div style="text-align:center;margin-bottom:20px;"><h2 style="margin:0;">${state.settings.schoolName}</h2><h3 style="margin:4px 0;">REKOD PERKEMBANGAN MURID PENDIDIKAN ISLAM</h3></div>`;
 }
 function doPrint(html){ document.getElementById("printArea").innerHTML = html; window.print(); }
 function printExamAll(jenis){
-  const studs = currentStudents();
+  const kelas = document.getElementById("cetakKelasSelect").value;
+  const studs = sortByName(state.students.filter(s=>s.kelas===kelas && !s.deleted));
+  if(!studs.length){ showToast("Tiada murid dalam kelas ini."); return; }
   const rows = studs.map((s,i)=>{
     const es = state.examMarks.filter(e=>e.studentId===s.id && e.jenis===jenis).sort((a,b)=>b.tarikh.localeCompare(a.tarikh));
     const latest = es[0]; const g = latest?gradeFromMarkah(latest.markah):"-";
     return `<tr><td>${i+1}</td><td>${s.nama}</td><td>${latest?latest.markah:"-"}</td><td>${g}</td></tr>`;
   }).join("");
-  doPrint(buildPrintHeader()+`<h4>Keputusan ${jenis} (Semua Murid)</h4><table border="1" cellspacing="0" cellpadding="6" style="width:100%;border-collapse:collapse;"><tr><th>Bil</th><th>Nama Murid</th><th>Markah</th><th>Gred</th></tr>${rows}</table>`);
+  doPrint(buildPrintHeader()+`<h4>Keputusan ${jenis} — ${kelas.toUpperCase()} (Semua Murid)</h4><table border="1" cellspacing="0" cellpadding="6" style="width:100%;border-collapse:collapse;"><tr><th>Bil</th><th>Nama Murid</th><th>Markah</th><th>Gred</th></tr>${rows}</table>`);
 }
 function printStudentReport(studentId){
   const s = studentById(studentId); if(!s) return;
   const recs = state.records.filter(r=>r.studentId===studentId).sort((a,b)=>b.tarikh.localeCompare(a.tarikh));
   const rows = recs.map(r=>`<tr><td>${BIDANG[r.bidang]?.label||r.bidang}</td><td>${r.tajuk}</td><td>${r.tp}</td><td>${fmtDate(r.tarikh)}</td></tr>`).join("");
-  doPrint(buildPrintHeader()+`<h4>Rekod Perkembangan Murid: ${s.nama}</h4><table border="1" cellspacing="0" cellpadding="6" style="width:100%;border-collapse:collapse;"><tr><th>Bidang</th><th>Tajuk</th><th>TP</th><th>Tarikh</th></tr>${rows}</table>`);
+  doPrint(buildPrintHeader()+`<h4>Rekod Perkembangan Murid: ${s.nama} (${s.kelas})</h4><table border="1" cellspacing="0" cellpadding="6" style="width:100%;border-collapse:collapse;"><tr><th>Bidang</th><th>Tajuk</th><th>TP</th><th>Tarikh</th></tr>${rows}</table>`);
 }
 function printRecordsIndividu(){
-  const sel = document.getElementById("indStudent") ? document.getElementById("indStudent").value : null;
-  const target = sel || (currentStudents()[0] && currentStudents()[0].id);
+  const target = document.getElementById("cetakMuridSelect").value;
   if(!target){ showToast("Tiada murid untuk dicetak."); return; }
   printStudentReport(target);
 }
 function printRecordsAll(){
-  const studs = currentStudents();
-  let html = buildPrintHeader() + `<h4>Rekod Perkembangan Murid (Semua Murid)</h4>`;
+  const kelas = document.getElementById("cetakKelasSelect").value;
+  const studs = sortByName(state.students.filter(s=>s.kelas===kelas && !s.deleted));
+  if(!studs.length){ showToast("Tiada murid dalam kelas ini."); return; }
+  let html = buildPrintHeader() + `<h4>Rekod Perkembangan Murid — ${kelas.toUpperCase()} (Semua Murid)</h4>`;
+  let anyData = false;
   studs.forEach(s=>{
     const recs = state.records.filter(r=>r.studentId===s.id).sort((a,b)=>b.tarikh.localeCompare(a.tarikh));
     if(!recs.length) return;
+    anyData = true;
     const rows = recs.map(r=>`<tr><td>${BIDANG[r.bidang]?.label||r.bidang}</td><td>${r.tajuk}</td><td>${r.tp}</td><td>${fmtDate(r.tarikh)}</td></tr>`).join("");
     html += `<h5 style="margin-top:16px;">${s.nama}</h5><table border="1" cellspacing="0" cellpadding="5" style="width:100%;border-collapse:collapse;margin-bottom:10px;"><tr><th>Bidang</th><th>Tajuk</th><th>TP</th><th>Tarikh</th></tr>${rows}</table>`;
   });
+  if(!anyData){ showToast("Tiada rekod TP untuk kelas ini lagi."); return; }
   doPrint(html);
+}
+
+/* ================= CETAK VIEW ================= */
+function renderCetakView(){
+  const kelasSel = document.getElementById("cetakKelasSelect");
+  kelasSel.innerHTML = CLASSES.map(c=>`<option value="${c}">${c.toUpperCase()}</option>`).join("");
+  const muridSel = document.getElementById("cetakMuridSelect");
+  const activeStuds = sortByClassThenName(state.students.filter(s=>!s.deleted));
+  muridSel.innerHTML = activeStuds.map(s=>`<option value="${s.id}">${s.nama} (${s.kelas})</option>`).join("") || `<option value="">-- Tiada murid --</option>`;
 }
 
 /* ================= GURU (ADMIN) VIEW ================= */
