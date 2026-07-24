@@ -784,8 +784,24 @@ const TAJUK_BY_YEAR = {
     sirah:["Wahyu Teragung","Meneladani Sifat Tabligh","Nabi Muhammad SAW dan Masyarakat Mekkah"],
     adab:["Jaga Adab Tidurmu","Ilmu Dituntut Adab Dipelihara","Mari Bersyukur","Cintakan Sunnah Rasulullah SAW"]
   },
-  "4": Object.assign({}, GENERIC_TAJUK),
-  "6": Object.assign({}, GENERIC_TAJUK)
+  "4":{
+    quran:["Membaca Surah At-Takasur","Membaca Surah Al-Qariah","Menghafaz Surah At-Takasur","Menghafaz Surah Al-Qariah","Kefahaman Tadabur Surah Al-Ikhlas","Tajwid Bacaan Mim Sakinah","Tajwid Qalqalah","Tajwid Tanda Waqaf"],
+    hadis:["Memuliakan Tetamu"],
+    jawi:["Kenali Saya","Cintai Tulisan Jawi","Travelog Ilmu","Menuju Baitullah"],
+    aqidah:["Agung dan Mulianya Tuhanku","Utusan Yang Mulia","Kufur","Nifak"],
+    ibadah:["Mari Bersuci","Menyambut Seruan Ilahi","Bulan Penyucian Jiwa"],
+    sirah:["Janji Setia Penduduk Yathrib","Kebijaksanaan Nabi Muhammad SAW","Dakwah Nabi Muhammad SAW"],
+    adab:["Tutuplah Auratmu","Mari Beriadah","Jiran Sepakat Membawa Berkat","Guruku Sayang"]
+  },
+  "6":{
+    quran:["Tilawah Surah Al-Insyiraah","Betulkan Bacaan Surah Adh-Dhuha","Hafazan Surah Al-Insyiraah","Hafazan Surah Adh-Dhuha","Kefahaman Surah Al-Maun","Mad Lin","Mad 'Aridh Lissukun","Mad Wajib Muttasil","Mad Jaiz Munfasil","Mad Silah Towilah","Mad Lazim Harfi Muthaqqal","Mad Lazim Harfi Mukhaffaf","Mad Lazim Kalimi Muthaqqal","Mad Lazim Kalimi Mukhaffaf","Mad Farqi"],
+    hadis:["Masyarakat Maju Tanpa Rasuah"],
+    jawi:["Sains dan Teknologi Pemacu Masa Hadapan","Kesenian Islam Lambang Kepatuhan","Khat Khazanah Negara"],
+    aqidah:["Al-Hadi","Al-'Adl","Beriman Dengan Qada' dan Qadar","Hindari Khurafat","Bahaya Riddah"],
+    ibadah:["Hukum Sebagai Manual Hidup","Rukhsah Solat Ketika Sakit","Solat Jenazah Penghormatan Terakhir"],
+    sirah:["Pembentukan Negara Madinah","Tasamuh","Jihad"],
+    adab:["Santun Dalam Pergaulan Ciri Mukmim Sejati","Mari Berziarah Dengan Berhikmah","Kemudahan Awam Milik Bersama","Sayangi Negara Amanah Kita"]
+  }
 };
 function getYearFromClass(kelas){ const m=(kelas||"").match(/\d+/); return m?m[0]:"4"; }
 function getTajukList(year, bidangKey){
@@ -808,7 +824,7 @@ const FALLBACK_EXEC_URL = "https://script.google.com/macros/s/AKfycbw5lTxFcS_M09
 
 let state = {
   settings:{ schoolName:"SK SERI GRISEK", schoolCode:"", apiUrl:FALLBACK_EXEC_URL, deadlineText:"", deadlineDate:"" },
-  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[]
+  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[], tpSemasaDecisions:[]
 };
 let session = { currentUser:null };
 let wizard = { bidang:null, tajuk:null, mode:"individu", pukalTp:null, pukalSelected:new Set(), examJenis:"UPSA" };
@@ -921,6 +937,26 @@ function getBidangDecision(studentId, bidangKey){
 }
 function getTpAkhirDecision(studentId){
   return (state.tpAkhirDecisions||[]).find(d=>d.studentId===studentId) || null;
+}
+function getTpSemasaDecision(studentId){
+  return (state.tpSemasaDecisions||[]).find(d=>d.studentId===studentId) || null;
+}
+/* TP Semasa: cadangan berdasarkan TP DOMINAN (mod) daripada SEMUA tajuk (22 tajuk),
+   lengkap dengan profil taburan peratusan. Ini adalah lapisan pertama sebelum
+   Analisis 7 Bidang dan Cadangan TP Akhir. */
+function computeTpSemasaCadangan(studentId){
+  const profile = computeOverallProfile(studentId);
+  if(!profile.totalTopics) return { profile, cadanganTp:null, dist:[] };
+  const { topicDist, totalTopics } = profile;
+  let maxFreq = 0;
+  Object.values(topicDist).forEach(freq=>{ if(freq>maxFreq) maxFreq=freq; });
+  const modes = Object.entries(topicDist).filter(([tp,freq])=>freq===maxFreq && freq>0).map(([tp])=>parseInt(tp)).sort((a,b)=>a-b);
+  const cadanganTp = modes.length ? modes[modes.length-1] : null;
+  const cadanganLabel = modes.length ? modes.map(m=>"TP"+m).join("/") : null;
+  const dist = [5,4,3,2,1].filter(l=>topicDist[l]>0).map(l=>({
+    tp:l, bil:topicDist[l], pct: Math.round(topicDist[l]/totalTopics*1000)/10
+  }));
+  return { profile, cadanganTp, cadanganLabel, dist, totalTopics };
 }
 function computeOverallProfile(studentId){
   const bidangList = Object.entries(BIDANG).map(([key,b])=>{
@@ -1041,6 +1077,7 @@ async function loadState(){
       if(server.users && server.users.length) state.users = server.users;
       if(server.bidangDecisions) state.bidangDecisions = server.bidangDecisions;
       if(server.tpAkhirDecisions) state.tpAkhirDecisions = server.tpAkhirDecisions;
+      if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName = server.settings.schoolName;
         if(server.settings.schoolCode) state.settings.schoolCode = server.settings.schoolCode;
@@ -1350,6 +1387,37 @@ function renderTpView(){
   }
   const cad = computeTpAkhirCadangan(studentId);
   const tpAkhirDec = getTpAkhirDecision(studentId);
+  const semasa = computeTpSemasaCadangan(studentId);
+  const tpSemasaDec = getTpSemasaDecision(studentId);
+
+  const isSemasaFinal = tpSemasaDec && tpSemasaDec.status!=="Menunggu Pengesahan";
+  const semasaFinalTp = isSemasaFinal ? tpSemasaDec.tpMuktamad : semasa.cadanganTp;
+  const semasaDistRows = semasa.dist.map(d=>
+    `<div class="rank-row"><div class="rank-label" style="width:60px;">TP${d.tp}</div><div class="rank-bar-track"><div class="rank-bar-fill" style="width:${d.pct}%;background:${d.tp===semasa.cadanganTp?'#c9973e':'#9aa5b8'};"></div></div><div class="rank-val">${d.bil} (${d.pct}%)</div></div>`
+  ).join("");
+  const tpSemasaBlock = `
+    <h4 class="section-title">1. TP Semasa — Profil ${semasa.totalTopics} Tajuk</h4>
+    <div style="margin-bottom:10px;">${semasaDistRows}</div>
+    <div class="alert-box" style="background:${isSemasaFinal?'#ecfdf5':'#eef2ff'};border-color:${isSemasaFinal?'#a7f3d0':'#c7d2fe'};">
+      <div class="a-icon">${isSemasaFinal?"✅":"📊"}</div>
+      <div>
+        <b style="font-size:16px;">${isSemasaFinal?`TP Semasa Muktamad: TP${semasaFinalTp}`:`Cadangan TP Semasa (Dominan): TP${semasa.cadanganLabel}`}</b>
+        <div class="a-sub" style="margin:4px 0;">TP dominan dikira daripada tajuk paling kerap dicapai murid.</div>
+        ${isSemasaFinal ? `<div class="a-sub" style="margin-top:4px;">Status: <b>${tpSemasaDec.status}</b> pada ${fmtDate(tpSemasaDec.tarikhPengesahan)}${tpSemasaDec.catatan?`<br>Catatan: "${tpSemasaDec.catatan}"`:""}</div>` : ""}
+      </div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn-primary btn-sm" data-sahkan-tp-semasa="1" data-cadangan-tp="${semasa.cadanganTp}">✓ Sahkan TP${semasa.cadanganTp}</button>
+      <button class="btn-outline btn-sm" data-ubah-tp-semasa="1">✎ Pilih TP Lain</button>
+    </div>
+    <div id="ubahTpSemasaPanel" style="display:none;margin-top:10px;padding:14px;background:#f8f9fb;border-radius:10px;border:1px solid var(--border);">
+      <label style="font-size:12px;color:var(--muted);font-weight:700;">Pilih TP Semasa</label>
+      <div class="tp-row" id="ubahTpSemasaRow" style="margin:6px 0 10px;">${TP_LIST.map(tp=>`<button class="tp-btn ${tpClass(tp)}" data-semasa-tp="${tp}">${tp}</button>`).join("")}</div>
+      <label style="font-size:12px;color:var(--muted);font-weight:700;">Catatan (pilihan)</label>
+      <textarea id="catatanTpSemasa" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:6px 0 10px;" placeholder="Contoh: Pertimbangan tambahan guru..."></textarea>
+      <button class="btn-primary btn-sm" id="btnConfirmUbahTpSemasa">Simpan Keputusan</button>
+    </div>
+  `;
 
   const bidangCards = cad.profile.bidangList.filter(b=>b.count>0).map(b=>{
     const distTxt = [5,4,3,2,1].filter(l=>b.dist[l]>0).map(l=>`TP${l}: ${b.dist[l]} tajuk`).join(" · ");
@@ -1387,20 +1455,23 @@ function renderTpView(){
   box.innerHTML = `
     <h3 class="section-title">${s.nama} (${s.kelas})</h3>
     <div class="stat-grid" style="margin-bottom:16px;">
-      <div class="stat-card"><div class="stat-icon" style="background:#e6ecfb;">📝</div><div><div class="stat-num">TP${tpAkhirDec?.tpMuktamad ? tpAkhirDec.tpMuktamad : (allRecs.length ? allRecs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp.replace('TP','') : '-')}</div><div class="stat-lbl">TP Semasa (terkini)</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:${isSemasaFinal?'#dcfce7':'#e6ecfb'};">📊</div><div><div class="stat-num">TP${semasaFinalTp||'-'}</div><div class="stat-lbl">${isSemasaFinal?'TP Semasa Muktamad':'TP Semasa Cadangan'}</div></div></div>
       <div class="stat-card"><div class="stat-icon" style="background:${isFinal?'#dcfce7':'#fef3c7'};">🎯</div><div><div class="stat-num">TP${finalTp}</div><div class="stat-lbl">${isFinal?'TP Akhir Muktamad':'TP Akhir Cadangan'}</div></div></div>
     </div>
-    <h4 class="section-title">1. Analisis Setiap Bidang</h4>
+
+    ${tpSemasaBlock}
+
+    <h4 class="section-title" style="margin-top:18px;">2. Analisis Setiap Bidang</h4>
     ${bidangCards}
 
-    <h4 class="section-title" style="margin-top:18px;">2. Profil Keseluruhan 7 Bidang</h4>
+    <h4 class="section-title" style="margin-top:18px;">Profil Keseluruhan 7 Bidang</h4>
     <div class="table-wrap" style="margin-bottom:8px;max-height:200px;"><table><thead><tr><th>Bidang</th><th>TP Bidang</th><th>Bil. Tajuk</th></tr></thead><tbody>${profilRows}</tbody></table></div>
     <div class="small-note" style="margin-bottom:16px;">${bidangSummaryTxt}</div>
 
-    <h4 class="section-title">3. Analisis Keseluruhan ${cad.profile.totalTopics} Tajuk</h4>
+    <h4 class="section-title">Analisis Keseluruhan ${cad.profile.totalTopics} Tajuk</h4>
     <div style="margin-bottom:16px;">${topicRows}</div>
 
-    <h4 class="section-title">4. Cadangan TP Akhir</h4>
+    <h4 class="section-title">3. Cadangan TP Akhir</h4>
     <div class="alert-box" style="background:${isFinal?'#ecfdf5':'#fff9ec'};border-color:${isFinal?'#a7f3d0':'#f4e2b8'};">
       <div class="a-icon">${isFinal?"✅":"🎯"}</div>
       <div>
@@ -1925,34 +1996,66 @@ document.addEventListener("click", async (e)=>{
   if(t.dataset.sahkanBidang){
     const bidangKey = t.dataset.sahkanBidang;
     const cadanganTp = t.dataset.cadanganTp;
-    const dec = { studentId: lihatMuridId, bidangKey, tpBidang: cadanganTp, status:"Disahkan Guru", tarikh: todayStr() };
+    const dec = { studentId: tpViewStudentId, bidangKey, tpBidang: cadanganTp, status:"Disahkan Guru", tarikh: todayStr() };
     if(!state.bidangDecisions) state.bidangDecisions=[];
-    const idx = state.bidangDecisions.findIndex(d=>d.studentId===lihatMuridId && d.bidangKey===bidangKey);
+    const idx = state.bidangDecisions.findIndex(d=>d.studentId===tpViewStudentId && d.bidangKey===bidangKey);
     if(idx>=0) state.bidangDecisions[idx]=dec; else state.bidangDecisions.push(dec);
     await saveState(); await apiPost("saveBidangDecision", dec);
-    renderLihatMuridModal(lihatMuridId);
+    renderTpView();
     showToast(`Bidang disahkan pada TP${cadanganTp}.`);
   }
   if(t.dataset.ubahBidang){
     const bidangKey = t.dataset.ubahBidang;
     const sel = document.querySelector(`[data-ubah-bidang-select="${bidangKey}"]`);
     const chosenTp = sel.value;
-    const dec = { studentId: lihatMuridId, bidangKey, tpBidang: chosenTp, status:"Ditentukan Guru", tarikh: todayStr() };
+    const dec = { studentId: tpViewStudentId, bidangKey, tpBidang: chosenTp, status:"Ditentukan Guru", tarikh: todayStr() };
     if(!state.bidangDecisions) state.bidangDecisions=[];
-    const idx = state.bidangDecisions.findIndex(d=>d.studentId===lihatMuridId && d.bidangKey===bidangKey);
+    const idx = state.bidangDecisions.findIndex(d=>d.studentId===tpViewStudentId && d.bidangKey===bidangKey);
     if(idx>=0) state.bidangDecisions[idx]=dec; else state.bidangDecisions.push(dec);
     await saveState(); await apiPost("saveBidangDecision", dec);
-    renderLihatMuridModal(lihatMuridId);
+    renderTpView();
     showToast(`Bidang ditetapkan pada TP${chosenTp}.`);
+  }
+  if(t.dataset.sahkanTpSemasa){
+    const cadanganTp = t.dataset.cadanganTp;
+    const dec = { studentId: tpViewStudentId, tpCadangan: cadanganTp, tpMuktamad: cadanganTp, tarikhPengesahan: todayStr(), status:"Disahkan Guru", catatan:"" };
+    if(!state.tpSemasaDecisions) state.tpSemasaDecisions=[];
+    const idx = state.tpSemasaDecisions.findIndex(d=>d.studentId===tpViewStudentId);
+    if(idx>=0) state.tpSemasaDecisions[idx]=dec; else state.tpSemasaDecisions.push(dec);
+    await saveState(); await apiPost("saveTpSemasaDecision", dec);
+    renderTpView();
+    showToast(`TP Semasa disahkan: TP${cadanganTp}.`);
+  }
+  if(t.dataset.ubahTpSemasa){
+    const panel = document.getElementById("ubahTpSemasaPanel");
+    panel.style.display = panel.style.display==="none" ? "block" : "none";
+  }
+  if(t.dataset.semasaTp){
+    document.querySelectorAll("#ubahTpSemasaRow .tp-btn").forEach(b=>b.classList.remove("selected"));
+    t.classList.add("selected");
+  }
+  if(t.id==="btnConfirmUbahTpSemasa"){
+    const chosenBtn = document.querySelector("#ubahTpSemasaRow .tp-btn.selected");
+    if(!chosenBtn){ showToast("Sila pilih TP Semasa."); return; }
+    const chosenTp = chosenBtn.dataset.semasaTp.replace("TP","");
+    const catatan = document.getElementById("catatanTpSemasa").value.trim();
+    const semasa = computeTpSemasaCadangan(tpViewStudentId);
+    const dec = { studentId: tpViewStudentId, tpCadangan: String(semasa.cadanganTp||""), tpMuktamad: chosenTp, tarikhPengesahan: todayStr(), status:"Ditentukan Guru", catatan };
+    if(!state.tpSemasaDecisions) state.tpSemasaDecisions=[];
+    const idx = state.tpSemasaDecisions.findIndex(d=>d.studentId===tpViewStudentId);
+    if(idx>=0) state.tpSemasaDecisions[idx]=dec; else state.tpSemasaDecisions.push(dec);
+    await saveState(); await apiPost("saveTpSemasaDecision", dec);
+    renderTpView();
+    showToast(`TP Semasa ditetapkan: TP${chosenTp}.`);
   }
   if(t.dataset.sahkanTpAkhir){
     const cadanganTp = t.dataset.cadanganTp;
-    const dec = { studentId: lihatMuridId, tpCadangan: cadanganTp, tpMuktamad: cadanganTp, tarikhPengesahan: todayStr(), status:"Disahkan Guru", catatan:"" };
+    const dec = { studentId: tpViewStudentId, tpCadangan: cadanganTp, tpMuktamad: cadanganTp, tarikhPengesahan: todayStr(), status:"Disahkan Guru", catatan:"" };
     if(!state.tpAkhirDecisions) state.tpAkhirDecisions=[];
-    const idx = state.tpAkhirDecisions.findIndex(d=>d.studentId===lihatMuridId);
+    const idx = state.tpAkhirDecisions.findIndex(d=>d.studentId===tpViewStudentId);
     if(idx>=0) state.tpAkhirDecisions[idx]=dec; else state.tpAkhirDecisions.push(dec);
     await saveState(); await apiPost("saveTpAkhirDecision", dec);
-    renderLihatMuridModal(lihatMuridId);
+    renderTpView();
     renderRekodTable();
     showToast(`TP Akhir disahkan: TP${cadanganTp}.`);
   }
@@ -1969,13 +2072,13 @@ document.addEventListener("click", async (e)=>{
     if(!chosenBtn){ showToast("Sila pilih TP Akhir."); return; }
     const chosenTp = chosenBtn.dataset.finalTp.replace("TP","");
     const catatan = document.getElementById("catatanTpAkhir").value.trim();
-    const cad = computeTpAkhirCadangan(lihatMuridId);
-    const dec = { studentId: lihatMuridId, tpCadangan: String(cad.cadanganTp||""), tpMuktamad: chosenTp, tarikhPengesahan: todayStr(), status:"Ditentukan Guru", catatan };
+    const cad = computeTpAkhirCadangan(tpViewStudentId);
+    const dec = { studentId: tpViewStudentId, tpCadangan: String(cad.cadanganTp||""), tpMuktamad: chosenTp, tarikhPengesahan: todayStr(), status:"Ditentukan Guru", catatan };
     if(!state.tpAkhirDecisions) state.tpAkhirDecisions=[];
-    const idx = state.tpAkhirDecisions.findIndex(d=>d.studentId===lihatMuridId);
+    const idx = state.tpAkhirDecisions.findIndex(d=>d.studentId===tpViewStudentId);
     if(idx>=0) state.tpAkhirDecisions[idx]=dec; else state.tpAkhirDecisions.push(dec);
     await saveState(); await apiPost("saveTpAkhirDecision", dec);
-    renderLihatMuridModal(lihatMuridId);
+    renderTpView();
     renderRekodTable();
     showToast(`TP Akhir ditetapkan: TP${chosenTp}.`);
   }
@@ -2193,6 +2296,7 @@ document.addEventListener("click", async (e)=>{
       if(server.users && server.users.length) state.users=server.users;
       if(server.bidangDecisions) state.bidangDecisions = server.bidangDecisions;
       if(server.tpAkhirDecisions) state.tpAkhirDecisions = server.tpAkhirDecisions;
+      if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName=server.settings.schoolName;
         if(server.settings.customTajuk){ try{ state.customTajuk=JSON.parse(server.settings.customTajuk); }catch(e){} }
