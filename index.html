@@ -792,7 +792,7 @@ const FALLBACK_EXEC_URL = "https://script.google.com/macros/s/AKfycbw5lTxFcS_M09
 
 let state = {
   settings:{ schoolName:"SK SERI GRISEK", schoolCode:"", apiUrl:FALLBACK_EXEC_URL, deadlineText:"", deadlineDate:"" },
-  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}
+  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[]
 };
 let session = { currentUser:null };
 let wizard = { bidang:null, tajuk:null, mode:"individu", pukalTp:null, pukalSelected:new Set(), examJenis:"UPSA" };
@@ -881,36 +881,69 @@ function gradeColor(g){ return {A:"#bbf7d0",B:"#bfdbfe",C:"#fde68a",D:"#fed7aa",
 function gradeTextColor(g){ return {A:"#166534",B:"#1e40af",C:"#92400e",D:"#9a3412",E:"#991b1b"}[g]||"#374151"; }
 function tpClass(tp){ return "tp"+tp.replace("TP",""); }
 
-/* ================= 3-TIER TP CALCULATION (Tajuk -> Bidang -> Akhir) ================= */
-function scoreToTP(score){
-  if(score==null) return null;
-  if(score>=5.5) return 6;
-  if(score>=4.5) return 5;
-  if(score>=3.5) return 4;
-  if(score>=2.5) return 3;
-  if(score>=1.5) return 2;
-  return 1;
+/* ================= PBD: ANALISIS TABURAN + CADANGAN (BUKAN FORMULA AUTOMATIK) ================= */
+/* Nota: Pengiraan di bawah HANYA untuk analisis & cadangan. Keputusan TP Akhir/TP Bidang
+   muktamad SENTIASA bergantung kepada pengesahan guru (bukan formula KPM rasmi). */
+function bidangDistribution(studentId, bidangKey){
+  const recs = state.records.filter(r=>r.studentId===studentId && r.bidang===bidangKey);
+  const dist = {1:0,2:0,3:0,4:0,5:0,6:0};
+  const values = recs.map(r=>{ const v=parseInt(r.tp.replace("TP","")); dist[v]=(dist[v]||0)+1; return v; });
+  const count = recs.length;
+  const highest = values.length ? Math.max(...values) : null;
+  const lowest = values.length ? Math.min(...values) : null;
+  const pctTP4plus = count ? Math.round(values.filter(v=>v>=4).length/count*100) : 0;
+  const pctTP5plus = count ? Math.round(values.filter(v=>v>=5).length/count*100) : 0;
+  let maxFreq = 0;
+  Object.values(dist).forEach(freq=>{ if(freq>maxFreq) maxFreq=freq; });
+  const modes = Object.entries(dist).filter(([tp,freq])=>freq===maxFreq && freq>0).map(([tp])=>parseInt(tp)).sort((a,b)=>a-b);
+  const cadanganLabel = modes.length ? modes.map(m=>"TP"+m).join("/") : null;
+  const cadanganTp = modes.length ? modes[modes.length-1] : null;
+  return { bidangKey, count, dist, highest, lowest, pctTP4plus, pctTP5plus, cadanganLabel, cadanganTp, recs };
 }
-function computeBidangScores(studentId){
-  const result = {};
-  Object.entries(BIDANG).forEach(([key,b])=>{
-    const recs = state.records.filter(r=>r.studentId===studentId && r.bidang===key);
-    const tpVals = recs.map(r=>parseInt(r.tp.replace("TP","")));
-    const score = tpVals.length ? tpVals.reduce((a,v)=>a+v,0)/tpVals.length : null;
-    result[key] = { key, label:b.label, count:recs.length, tpList: recs.map(r=>r.tp), score };
+function getBidangDecision(studentId, bidangKey){
+  return (state.bidangDecisions||[]).find(d=>d.studentId===studentId && d.bidangKey===bidangKey) || null;
+}
+function getTpAkhirDecision(studentId){
+  return (state.tpAkhirDecisions||[]).find(d=>d.studentId===studentId) || null;
+}
+function computeOverallProfile(studentId){
+  const bidangList = Object.entries(BIDANG).map(([key,b])=>{
+    const distInfo = bidangDistribution(studentId, key);
+    const decision = getBidangDecision(studentId, key);
+    const tpBidangFinal = decision ? parseInt(decision.tpBidang) : distInfo.cadanganTp;
+    return Object.assign({key, label:b.label, decision, tpBidangFinal}, distInfo);
   });
-  return result;
-}
-function computeStudentTpSummary(studentId){
-  const bidangScores = computeBidangScores(studentId);
-  const validBidang = Object.values(bidangScores).filter(b=>b.score!=null);
-  const skorBidang = validBidang.length ? validBidang.reduce((a,b)=>a+b.score,0)/validBidang.length : null;
+  const withData = bidangList.filter(b=>b.count>0);
+  const bidangCountByTp = {1:0,2:0,3:0,4:0,5:0,6:0};
+  withData.forEach(b=>{ if(b.tpBidangFinal) bidangCountByTp[b.tpBidangFinal]++; });
   const allRecs = state.records.filter(r=>r.studentId===studentId);
-  const skorTajuk = allRecs.length ? allRecs.reduce((a,r)=>a+parseInt(r.tp.replace("TP","")),0)/allRecs.length : null;
-  const tp5PlusCount = allRecs.filter(r=>r.tp==="TP5"||r.tp==="TP6").length;
-  const cadangan = skorBidang!=null ? scoreToTP(skorBidang) : null;
-  const diverge = (skorBidang!=null && skorTajuk!=null) ? Math.abs(skorBidang-skorTajuk) >= 0.5 : false;
-  return { bidangScores, skorBidang, skorTajuk, tp5PlusCount, totalRecs: allRecs.length, cadangan, diverge };
+  const topicDist = {1:0,2:0,3:0,4:0,5:0,6:0};
+  allRecs.forEach(r=>{ const v=parseInt(r.tp.replace("TP","")); topicDist[v]=(topicDist[v]||0)+1; });
+  return { bidangList, withData, bidangCountByTp, topicDist, totalTopics: allRecs.length };
+}
+function computeTpAkhirCadangan(studentId){
+  const profile = computeOverallProfile(studentId);
+  if(!profile.totalTopics) return { profile, cadanganTp:null };
+  let maxBidangFreq = 0;
+  Object.values(profile.bidangCountByTp).forEach(freq=>{ if(freq>maxBidangFreq) maxBidangFreq=freq; });
+  const bidangModes = Object.entries(profile.bidangCountByTp).filter(([tp,freq])=>freq===maxBidangFreq && freq>0).map(([tp])=>parseInt(tp));
+  const cadanganTp = bidangModes.length ? Math.max(...bidangModes) : null;
+  const totalBidangWithDecision = Object.values(profile.bidangCountByTp).reduce((a,b)=>a+b,0);
+  let bidangHighCount = 0;
+  Object.entries(profile.bidangCountByTp).forEach(([tp,freq])=>{ if(cadanganTp && parseInt(tp)>=cadanganTp) bidangHighCount+=freq; });
+  const concentration = totalBidangWithDecision ? bidangHighCount/totalBidangWithDecision : 0;
+  let keyakinan = "Rendah";
+  if(concentration>=0.7) keyakinan="Tinggi"; else if(concentration>=0.4) keyakinan="Sederhana";
+  const reasons = [];
+  Object.entries(profile.bidangCountByTp).sort((a,b)=>b[0]-a[0]).forEach(([tp,freq])=>{
+    if(freq>0) reasons.push(`${freq} daripada ${totalBidangWithDecision} bidang berada pada TP${tp}`);
+  });
+  const tp5plusTopics = profile.topicDist[5]+profile.topicDist[6];
+  const tp4plusTopics = tp5plusTopics+profile.topicDist[4];
+  reasons.push(`${tp5plusTopics} daripada ${profile.totalTopics} tajuk mencapai TP5 ke atas`);
+  reasons.push(`${tp4plusTopics} daripada ${profile.totalTopics} tajuk mencapai TP4 atau lebih`);
+  [3,2,1].forEach(lvl=>{ if(profile.topicDist[lvl]>0) reasons.push(`${profile.topicDist[lvl]} tajuk berada pada TP${lvl}`); });
+  return { profile, cadanganTp, keyakinan, reasons, totalBidangWithDecision };
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtDate(iso){ if(!iso) return "-"; const datePart = String(iso).split("T")[0]; const [y,m,d]=datePart.split("-"); if(!y||!m||!d) return datePart; return `${d}/${m}/${y}`; }
@@ -990,6 +1023,8 @@ async function loadState(){
       state.records = server.records || [];
       state.examMarks = server.examMarks || [];
       if(server.users && server.users.length) state.users = server.users;
+      if(server.bidangDecisions) state.bidangDecisions = server.bidangDecisions;
+      if(server.tpAkhirDecisions) state.tpAkhirDecisions = server.tpAkhirDecisions;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName = server.settings.schoolName;
         if(server.settings.schoolCode) state.settings.schoolCode = server.settings.schoolCode;
@@ -1244,10 +1279,16 @@ function renderRekodTable(){
     const pct = maxSlot ? Math.round(recorded/maxSlot*100) : 0;
     const latestTp = recs.length ? recs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp : null;
     const allRecs = state.records.filter(r=>r.studentId===s.id);
-    const summary = computeStudentTpSummary(s.id);
-    const tpAkhirCell = summary.cadangan
-      ? `<span class="badge ${tpClass('TP'+summary.cadangan)}" title="Skor Bidang: ${summary.skorBidang.toFixed(2)} · Skor Tajuk: ${summary.skorTajuk.toFixed(2)} · TP5/6: ${summary.tp5PlusCount}/${allRecs.length}">TP${summary.cadangan}</span>${summary.diverge?` <span title="Skor Bidang & Tajuk berbeza ketara — Pertimbangan Guru Diperlukan">⚠️</span>`:""}`
-      : "-";
+    let tpAkhirCell = "-";
+    if(allRecs.length){
+      const tpAkhirDec = getTpAkhirDecision(s.id);
+      if(tpAkhirDec && tpAkhirDec.status!=="Menunggu Pengesahan"){
+        tpAkhirCell = `<span class="badge ${tpClass('TP'+tpAkhirDec.tpMuktamad)}" title="${tpAkhirDec.status} pada ${fmtDate(tpAkhirDec.tarikhPengesahan)}">TP${tpAkhirDec.tpMuktamad}</span> ✅`;
+      } else {
+        const cad = computeTpAkhirCadangan(s.id);
+        tpAkhirCell = `<span class="badge" style="background:#fef3c7;color:#92400e;" title="Cadangan sistem — belum disahkan guru">TP${cad.cadanganTp}?</span>`;
+      }
+    }
     const sahCell = s.verified
       ? `✅ Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">↩️</button>`:""}`
       : (isAdmin ? `<button class="btn-outline btn-sm" data-verify-murid="${s.id}">Sahkan</button>` : "⏳ Belum Disahkan");
@@ -1272,35 +1313,84 @@ function renderLihatMuridModal(studentId){
   document.getElementById("lihatMuridNama").textContent = `Rekod: ${s.nama}`;
   const year = getYearFromClass(s.kelas);
 
-  const summary = computeStudentTpSummary(studentId);
   const summaryBox = document.getElementById("lihatTpSummary");
-  if(summary.totalRecs===0){
+  const allRecs = state.records.filter(r=>r.studentId===studentId);
+  if(allRecs.length===0){
     summaryBox.innerHTML = `<div class="small-note" style="margin-bottom:14px;">Belum ada rekod TP untuk murid ini lagi.</div>`;
   } else {
-    const bidangRows = Object.values(summary.bidangScores).map(b=>{
-      const bidangTp = scoreToTP(b.score);
-      return `<tr>
-        <td>${b.label}</td>
-        <td>${b.count}</td>
-        <td>${b.tpList.map(t=>`<span class="badge ${tpClass(t)}" style="margin-right:2px;font-size:10.5px;padding:2px 7px;">${t}</span>`).join("") || "-"}</td>
-        <td>${b.score!=null?b.score.toFixed(2):"-"}</td>
-        <td>${bidangTp?`<span class="badge ${tpClass('TP'+bidangTp)}">TP${bidangTp}</span>`:"-"}</td>
-      </tr>`;
-    }).join("");
-    summaryBox.innerHTML = `
-      <div class="stat-grid" style="margin-bottom:14px;">
-        <div class="stat-card"><div class="stat-icon" style="background:#e6ecfb;">📊</div><div><div class="stat-num">${summary.skorBidang.toFixed(2)}</div><div class="stat-lbl">Skor Penguasaan Bidang</div></div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:#fdf1da;">📚</div><div><div class="stat-num">${summary.skorTajuk.toFixed(2)}</div><div class="stat-lbl">Skor Penguasaan Tajuk</div></div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:#e6f4ea;">⭐</div><div><div class="stat-num">${summary.tp5PlusCount}/${summary.totalRecs}</div><div class="stat-lbl">Tajuk TP5-TP6 (${Math.round(summary.tp5PlusCount/summary.totalRecs*100)}%)</div></div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:${summary.diverge?'#fbe7e3':'#f1e9fb'};">🎯</div><div><div class="stat-num">TP${summary.cadangan}</div><div class="stat-lbl">Cadangan TP Akhir</div></div></div>
-      </div>
-      ${summary.diverge ? `<div class="alert-box" style="margin-bottom:14px;"><div class="a-icon">⚠️</div><div><b>Pertimbangan Guru Diperlukan</b><div class="a-sub">Skor Bidang (${summary.skorBidang.toFixed(2)}) dan Skor Tajuk (${summary.skorTajuk.toFixed(2)}) berbeza ketara. Sila semak sebelum mengesahkan TP Akhir.</div></div></div>` : ""}
-      <div class="table-wrap" style="margin-bottom:16px;max-height:220px;">
-        <table>
-          <thead><tr><th>Bidang</th><th>Bil. Tajuk</th><th>Senarai TP</th><th>Skor Bidang</th><th>TP Bidang</th></tr></thead>
-          <tbody>${bidangRows}</tbody>
-        </table>
+    const cad = computeTpAkhirCadangan(studentId);
+    const tpAkhirDec = getTpAkhirDecision(studentId);
+
+    // 1. Analisis Setiap Bidang
+    const bidangCards = cad.profile.bidangList.filter(b=>b.count>0).map(b=>{
+      const distTxt = [5,4,3,2,1].filter(l=>b.dist[l]>0).map(l=>`TP${l}: ${b.dist[l]} tajuk`).join(" · ");
+      const decided = b.decision && b.decision.status!=="Cadangan Sistem";
+      return `<div class="tajuk-bidang-block">
+        <h4>${b.label} <span class="small-note">(${b.count} tajuk)</span></h4>
+        <div class="small-note" style="margin-bottom:6px;">${distTxt}</div>
+        <div class="small-note">TP Tertinggi: <b>TP${b.highest}</b> · TP Terendah: <b>TP${b.lowest}</b> · ${b.pctTP4plus}% capai TP4+ · ${b.pctTP5plus}% capai TP5+</div>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span class="small-note">Cadangan TP Bidang: <b>${b.cadanganLabel}</b></span>
+          ${decided
+            ? `<span class="badge" style="background:#dcfce7;color:#166534;">TP${b.tpBidangFinal} — ${b.decision.status}</span>`
+            : `<span class="badge" style="background:#fef3c7;color:#92400e;">Cadangan Sistem — Pertimbangan Guru Diperlukan</span>`}
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button class="btn-outline btn-sm" data-sahkan-bidang="${b.key}" data-cadangan-tp="${b.cadanganTp}">✓ Sahkan TP${b.cadanganTp}</button>
+          <select data-ubah-bidang-select="${b.key}" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;">
+            ${TP_LIST.map(tp=>`<option value="${tp.replace('TP','')}" ${b.decision&&String(b.decision.tpBidang)===tp.replace('TP','')?'selected':''}>${tp}</option>`).join("")}
+          </select>
+          <button class="btn-outline btn-sm" data-ubah-bidang="${b.key}">✎ Tetapkan TP Lain</button>
+        </div>
       </div>`;
+    }).join("");
+
+    // 2. Profil Keseluruhan 7 Bidang
+    const profilRows = cad.profile.withData.map(b=>`<tr><td>${b.label}</td><td><span class="badge ${tpClass('TP'+b.tpBidangFinal)}">TP${b.tpBidangFinal}</span></td><td>${b.count}</td></tr>`).join("");
+    const bidangSummaryTxt = [5,4,3,2,1].filter(l=>cad.profile.bidangCountByTp[l]>0).map(l=>`TP${l}: ${cad.profile.bidangCountByTp[l]} bidang`).join(" · ");
+
+    // 3. Analisis Keseluruhan Tajuk
+    const topicRows = [5,4,3,2,1].filter(l=>cad.profile.topicDist[l]>0).map(l=>{
+      const pct = Math.round(cad.profile.topicDist[l]/cad.profile.totalTopics*100);
+      return `<div class="rank-row"><div class="rank-label" style="width:60px;">TP${l}</div><div class="rank-bar-track"><div class="rank-bar-fill" style="width:${pct}%;background:${gradeColor(['','','','','',''][0]||'#c9973e')};background:#c9973e;"></div></div><div class="rank-val">${cad.profile.topicDist[l]} (${pct}%)</div></div>`;
+    }).join("");
+
+    // 5. Cadangan TP Akhir
+    const isFinal = tpAkhirDec && tpAkhirDec.status!=="Menunggu Pengesahan";
+    const finalTp = isFinal ? tpAkhirDec.tpMuktamad : cad.cadanganTp;
+    summaryBox.innerHTML = `
+      <h4 class="section-title">1. Analisis Setiap Bidang</h4>
+      ${bidangCards}
+
+      <h4 class="section-title" style="margin-top:18px;">2. Profil Keseluruhan 7 Bidang</h4>
+      <div class="table-wrap" style="margin-bottom:8px;max-height:200px;"><table><thead><tr><th>Bidang</th><th>TP Bidang</th><th>Bil. Tajuk</th></tr></thead><tbody>${profilRows}</tbody></table></div>
+      <div class="small-note" style="margin-bottom:16px;">${bidangSummaryTxt}</div>
+
+      <h4 class="section-title">3. Analisis Keseluruhan ${cad.profile.totalTopics} Tajuk</h4>
+      <div style="margin-bottom:16px;">${topicRows}</div>
+
+      <h4 class="section-title">4. Cadangan TP Akhir</h4>
+      <div class="alert-box" style="background:${isFinal?'#ecfdf5':'#fff9ec'};border-color:${isFinal?'#a7f3d0':'#f4e2b8'};">
+        <div class="a-icon">${isFinal?"✅":"🎯"}</div>
+        <div>
+          <b style="font-size:16px;">${isFinal?`TP Akhir Muktamad: TP${finalTp}`:`TP Akhir Cadangan: TP${cad.cadanganTp}`}</b>
+          <div class="a-sub" style="margin:4px 0;">Tahap Keyakinan Cadangan: <b>${cad.keyakinan}</b></div>
+          <div class="a-sub"><b>Sebab:</b> ${cad.reasons.join("; ")}.</div>
+          ${isFinal ? `<div class="a-sub" style="margin-top:6px;">Status: <b>${tpAkhirDec.status}</b> pada ${fmtDate(tpAkhirDec.tarikhPengesahan)}${tpAkhirDec.catatan?`<br>Catatan: "${tpAkhirDec.catatan}"`:""}</div>` : ""}
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-primary btn-sm" data-sahkan-tp-akhir="1" data-cadangan-tp="${cad.cadanganTp}">✓ Sahkan TP${cad.cadanganTp}</button>
+        <button class="btn-outline btn-sm" data-ubah-tp-akhir="1">✎ Pilih TP Lain</button>
+      </div>
+      <div id="ubahTpAkhirPanel" style="display:none;margin-top:10px;padding:14px;background:#f8f9fb;border-radius:10px;border:1px solid var(--border);">
+        <label style="font-size:12px;color:var(--muted);font-weight:700;">Pilih TP Akhir</label>
+        <div class="tp-row" id="ubahTpAkhirRow" style="margin:6px 0 10px;">${TP_LIST.map(tp=>`<button class="tp-btn ${tpClass(tp)}" data-final-tp="${tp}">${tp}</button>`).join("")}</div>
+        <label style="font-size:12px;color:var(--muted);font-weight:700;">Catatan Pertimbangan Profesional (pilihan)</label>
+        <textarea id="catatanTpAkhir" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:6px 0 10px;" placeholder="Contoh: Murid menunjukkan penguasaan konsisten..."></textarea>
+        <button class="btn-primary btn-sm" id="btnConfirmUbahTpAkhir">Simpan Keputusan</button>
+      </div>
+    `;
   }
 
   const bidangSel = document.getElementById("lihatBidang");
@@ -1694,19 +1784,21 @@ document.addEventListener("click", async (e)=>{
     if(wizard.pukalSelected.size===0){ showToast("Sila pilih sekurang-kurangnya seorang murid."); return; }
     const origTxt2 = t.textContent;
     t.disabled=true; t.textContent="⏳ Menyimpan...";
-    const bulk=[];
+    const bulk=[]; let skippedDup=0;
     wizard.pukalSelected.forEach(sid=>{
+      const alreadyHas = state.records.some(r=>r.studentId===sid && r.bidang===wizard.bidang && r.tajuk===wizard.tajuk);
+      if(alreadyHas){ skippedDup++; return; }
       const rec={id:uid("r"),studentId:sid,bidang:wizard.bidang,tajuk:wizard.tajuk,tp:wizard.pukalTp,tarikh,evidence:null};
       state.records.push(rec); bulk.push(rec);
       const stu = studentById(sid);
       if(stu && stu.verified){ stu.verified = false; apiPost("updateStudent", stu); }
     });
     wizard.pukalSelected.clear(); wizard.pukalTp=null;
-    await saveState(); await apiPost("addRecordsBulk",{records:bulk});
+    await saveState(); if(bulk.length) await apiPost("addRecordsBulk",{records:bulk});
     renderStep3(); renderRekodTable();
     t.textContent = origTxt2; t.disabled=false;
     closeModal("uploadPukalModal");
-    showToast(`✅ Berjaya disimpan — ${bulk.length} rekod TP.`);
+    showToast(skippedDup>0 ? `✅ ${bulk.length} rekod disimpan, ${skippedDup} dilangkau (tajuk dah wujud).` : `✅ Berjaya disimpan — ${bulk.length} rekod TP.`);
   }
   if(t.dataset.delRecord){
     if(await customConfirm("Padam rekod ini?")){
@@ -1792,6 +1884,63 @@ document.addEventListener("click", async (e)=>{
     renderRekodTable();
     t.textContent = origTxt; t.disabled=false;
     showToast(`✅ ${toVerify.length} murid disahkan.`);
+  }
+  if(t.dataset.sahkanBidang){
+    const bidangKey = t.dataset.sahkanBidang;
+    const cadanganTp = t.dataset.cadanganTp;
+    const dec = { studentId: lihatMuridId, bidangKey, tpBidang: cadanganTp, status:"Disahkan Guru", tarikh: todayStr() };
+    if(!state.bidangDecisions) state.bidangDecisions=[];
+    const idx = state.bidangDecisions.findIndex(d=>d.studentId===lihatMuridId && d.bidangKey===bidangKey);
+    if(idx>=0) state.bidangDecisions[idx]=dec; else state.bidangDecisions.push(dec);
+    await saveState(); await apiPost("saveBidangDecision", dec);
+    renderLihatMuridModal(lihatMuridId);
+    showToast(`Bidang disahkan pada TP${cadanganTp}.`);
+  }
+  if(t.dataset.ubahBidang){
+    const bidangKey = t.dataset.ubahBidang;
+    const sel = document.querySelector(`[data-ubah-bidang-select="${bidangKey}"]`);
+    const chosenTp = sel.value;
+    const dec = { studentId: lihatMuridId, bidangKey, tpBidang: chosenTp, status:"Ditentukan Guru", tarikh: todayStr() };
+    if(!state.bidangDecisions) state.bidangDecisions=[];
+    const idx = state.bidangDecisions.findIndex(d=>d.studentId===lihatMuridId && d.bidangKey===bidangKey);
+    if(idx>=0) state.bidangDecisions[idx]=dec; else state.bidangDecisions.push(dec);
+    await saveState(); await apiPost("saveBidangDecision", dec);
+    renderLihatMuridModal(lihatMuridId);
+    showToast(`Bidang ditetapkan pada TP${chosenTp}.`);
+  }
+  if(t.dataset.sahkanTpAkhir){
+    const cadanganTp = t.dataset.cadanganTp;
+    const dec = { studentId: lihatMuridId, tpCadangan: cadanganTp, tpMuktamad: cadanganTp, tarikhPengesahan: todayStr(), status:"Disahkan Guru", catatan:"" };
+    if(!state.tpAkhirDecisions) state.tpAkhirDecisions=[];
+    const idx = state.tpAkhirDecisions.findIndex(d=>d.studentId===lihatMuridId);
+    if(idx>=0) state.tpAkhirDecisions[idx]=dec; else state.tpAkhirDecisions.push(dec);
+    await saveState(); await apiPost("saveTpAkhirDecision", dec);
+    renderLihatMuridModal(lihatMuridId);
+    renderRekodTable();
+    showToast(`TP Akhir disahkan: TP${cadanganTp}.`);
+  }
+  if(t.dataset.ubahTpAkhir){
+    const panel = document.getElementById("ubahTpAkhirPanel");
+    panel.style.display = panel.style.display==="none" ? "block" : "none";
+  }
+  if(t.dataset.finalTp){
+    document.querySelectorAll("#ubahTpAkhirRow .tp-btn").forEach(b=>b.classList.remove("selected"));
+    t.classList.add("selected");
+  }
+  if(t.id==="btnConfirmUbahTpAkhir"){
+    const chosenBtn = document.querySelector("#ubahTpAkhirRow .tp-btn.selected");
+    if(!chosenBtn){ showToast("Sila pilih TP Akhir."); return; }
+    const chosenTp = chosenBtn.dataset.finalTp.replace("TP","");
+    const catatan = document.getElementById("catatanTpAkhir").value.trim();
+    const cad = computeTpAkhirCadangan(lihatMuridId);
+    const dec = { studentId: lihatMuridId, tpCadangan: String(cad.cadanganTp||""), tpMuktamad: chosenTp, tarikhPengesahan: todayStr(), status:"Ditentukan Guru", catatan };
+    if(!state.tpAkhirDecisions) state.tpAkhirDecisions=[];
+    const idx = state.tpAkhirDecisions.findIndex(d=>d.studentId===lihatMuridId);
+    if(idx>=0) state.tpAkhirDecisions[idx]=dec; else state.tpAkhirDecisions.push(dec);
+    await saveState(); await apiPost("saveTpAkhirDecision", dec);
+    renderLihatMuridModal(lihatMuridId);
+    renderRekodTable();
+    showToast(`TP Akhir ditetapkan: TP${chosenTp}.`);
   }
   if(t.dataset.verifyMurid){
     const s = studentById(t.dataset.verifyMurid); if(!s) return;
@@ -2005,6 +2154,8 @@ document.addEventListener("click", async (e)=>{
       state.students=server.students||[]; state.records=server.records||[]; state.examMarks=server.examMarks||[];
       state.serverAppVersion = server.appVersion || "?";
       if(server.users && server.users.length) state.users=server.users;
+      if(server.bidangDecisions) state.bidangDecisions = server.bidangDecisions;
+      if(server.tpAkhirDecisions) state.tpAkhirDecisions = server.tpAkhirDecisions;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName=server.settings.schoolName;
         if(server.settings.customTajuk){ try{ state.customTajuk=JSON.parse(server.settings.customTajuk); }catch(e){} }
