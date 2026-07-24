@@ -308,6 +308,7 @@ html,body{overflow-x:hidden;max-width:100%;}
     <button class="nav-item" data-view="murid"><span class="emoji">🎓</span> Murid</button>
     <button class="nav-item" data-view="rekod"><span class="emoji">📝</span> Rekod</button>
     <button class="nav-item" data-view="tajuk"><span class="emoji">📚</span> Tajuk</button>
+    <button class="nav-item" data-view="tp"><span class="emoji">🎯</span> Tahap Penguasaan (TP)</button>
     <button class="nav-item" data-view="exam"><span class="emoji">🖊️</span> UPSA &amp; UASA</button>
 
     <div class="nav-section-label">Laporan</div>
@@ -434,6 +435,21 @@ html,body{overflow-x:hidden;max-width:100%;}
           <p class="small-note" style="margin-bottom:16px;">Klik "📋 Kriteria" untuk tetapkan maksud Rendah/Sederhana/Tinggi khusus bagi tajuk tu (rujuk DSKP sebenar), supaya guru ada panduan tepat semasa menilai eviden.</p>
           <div id="tajukFlatList"></div>
           <button class="btn-outline btn-sm" id="btnTambahTajukFlat" style="margin-top:6px;">➕ Tambah Tajuk</button>
+        </div>
+      </div>
+
+      <!-- ===== TAHAP PENGUASAAN (TP) VIEW ===== -->
+      <div class="view" data-view="tp">
+        <div class="eyebrow">DASHBOARD GURU</div>
+        <h2 class="page-title">Tahap Penguasaan (TP)</h2>
+        <div class="card" style="margin-bottom:18px;">
+          <div class="form-row" style="margin-bottom:0;">
+            <div class="field"><label>Pilih Kelas</label><select id="tpViewKelasSelect"></select></div>
+            <div class="field"><label>Pilih Murid</label><select id="tpViewMuridSelect"></select></div>
+          </div>
+        </div>
+        <div class="card" id="tpViewContent">
+          <div class="empty-row">Pilih murid untuk lihat analisis TP.</div>
         </div>
       </div>
 
@@ -677,7 +693,6 @@ html,body{overflow-x:hidden;max-width:100%;}
   <div class="modal-box" style="max-width:760px;">
     <button class="close-x" data-close="lihatMuridModal">✕</button>
     <h3 id="lihatMuridNama">Rekod Murid</h3>
-    <div id="lihatTpSummary"></div>
     <div class="form-panel">
       <div class="form-row">
         <div class="field"><label>Bidang</label><select id="lihatBidang"></select></div>
@@ -695,12 +710,13 @@ html,body{overflow-x:hidden;max-width:100%;}
       </div>
       <button class="btn-primary" id="btnSimpanLihatRekod" style="margin-top:14px;">Simpan Rekod</button>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap" style="margin-bottom:20px;">
       <table>
         <thead><tr><th>Bidang</th><th>Tajuk</th><th>TP</th><th>Eviden</th><th>Tarikh</th><th></th></tr></thead>
         <tbody id="lihatRekodTbody"></tbody>
       </table>
     </div>
+    <div id="lihatTpSummary"></div>
   </div>
 </div>
 
@@ -1307,91 +1323,112 @@ function renderRekodTable(){
     </tr>`;
   }).join("");
 }
+/* ================= TAHAP PENGUASAAN (TP) VIEW ================= */
+let tpViewStudentId = null;
+function renderTpViewSelectors(){
+  const kelasSel = document.getElementById("tpViewKelasSelect");
+  if(!kelasSel.dataset.built){ kelasSel.innerHTML = `<option value="ALL">Semua Kelas</option>` + CLASSES.map(c=>`<option value="${c}">${c.toUpperCase()}</option>`).join(""); kelasSel.dataset.built="1"; }
+  const muridSel = document.getElementById("tpViewMuridSelect");
+  const kelasFilter = kelasSel.value;
+  let studs = sortByClassThenName(state.students.filter(s=>!s.deleted));
+  if(kelasFilter!=="ALL") studs = studs.filter(s=>s.kelas===kelasFilter);
+  muridSel.innerHTML = studs.map(s=>`<option value="${s.id}" ${s.id===tpViewStudentId?"selected":""}>${s.nama} (${s.kelas})</option>`).join("") || `<option value="">-- Tiada murid --</option>`;
+  if(!tpViewStudentId && studs.length) tpViewStudentId = studs[0].id;
+  if(studs.length && !studs.some(s=>s.id===tpViewStudentId)) tpViewStudentId = studs[0].id;
+  muridSel.value = tpViewStudentId || "";
+}
+function renderTpView(){
+  renderTpViewSelectors();
+  const box = document.getElementById("tpViewContent");
+  const studentId = tpViewStudentId;
+  if(!studentId){ box.innerHTML = `<div class="empty-row">Tiada murid untuk dipaparkan.</div>`; return; }
+  const s = studentById(studentId); if(!s){ box.innerHTML = `<div class="empty-row">Murid tidak dijumpai.</div>`; return; }
+  const allRecs = state.records.filter(r=>r.studentId===studentId);
+  if(allRecs.length===0){
+    box.innerHTML = `<h3 class="section-title">${s.nama} (${s.kelas})</h3><div class="empty-row">Belum ada rekod TP untuk murid ini lagi. Pergi ke Rekod untuk tambah rekod dahulu.</div>`;
+    return;
+  }
+  const cad = computeTpAkhirCadangan(studentId);
+  const tpAkhirDec = getTpAkhirDecision(studentId);
+
+  const bidangCards = cad.profile.bidangList.filter(b=>b.count>0).map(b=>{
+    const distTxt = [5,4,3,2,1].filter(l=>b.dist[l]>0).map(l=>`TP${l}: ${b.dist[l]} tajuk`).join(" · ");
+    const decided = b.decision && b.decision.status!=="Cadangan Sistem";
+    return `<div class="tajuk-bidang-block">
+      <h4>${b.label} <span class="small-note">(${b.count} tajuk)</span></h4>
+      <div class="small-note" style="margin-bottom:6px;">${distTxt}</div>
+      <div class="small-note">TP Tertinggi: <b>TP${b.highest}</b> · TP Terendah: <b>TP${b.lowest}</b><br>Mencapai sekurang-kurangnya TP4 (TP4/TP5/TP6 digabung): <b>${b.pctTP4plus}%</b> · Mencapai sekurang-kurangnya TP5 (TP5/TP6 digabung): <b>${b.pctTP5plus}%</b></div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span class="small-note">Cadangan TP Bidang: <b>${b.cadanganLabel}</b></span>
+        ${decided
+          ? `<span class="badge" style="background:#dcfce7;color:#166534;">TP${b.tpBidangFinal} — ${b.decision.status}</span>`
+          : `<span class="badge" style="background:#fef3c7;color:#92400e;">Cadangan Sistem — Pertimbangan Guru Diperlukan</span>`}
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn-outline btn-sm" data-sahkan-bidang="${b.key}" data-cadangan-tp="${b.cadanganTp}">✓ Sahkan TP${b.cadanganTp}</button>
+        <select data-ubah-bidang-select="${b.key}" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;">
+          ${TP_LIST.map(tp=>`<option value="${tp.replace('TP','')}" ${b.decision&&String(b.decision.tpBidang)===tp.replace('TP','')?'selected':''}>${tp}</option>`).join("")}
+        </select>
+        <button class="btn-outline btn-sm" data-ubah-bidang="${b.key}">✎ Tetapkan TP Lain</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  const profilRows = cad.profile.withData.map(b=>`<tr><td>${b.label}</td><td><span class="badge ${tpClass('TP'+b.tpBidangFinal)}">TP${b.tpBidangFinal}</span></td><td>${b.count}</td></tr>`).join("");
+  const bidangSummaryTxt = [5,4,3,2,1].filter(l=>cad.profile.bidangCountByTp[l]>0).map(l=>`TP${l}: ${cad.profile.bidangCountByTp[l]} bidang`).join(" · ");
+
+  const topicRows = [5,4,3,2,1].filter(l=>cad.profile.topicDist[l]>0).map(l=>{
+    const pct = Math.round(cad.profile.topicDist[l]/cad.profile.totalTopics*100);
+    return `<div class="rank-row"><div class="rank-label" style="width:60px;">TP${l}</div><div class="rank-bar-track"><div class="rank-bar-fill" style="width:${pct}%;background:#c9973e;"></div></div><div class="rank-val">${cad.profile.topicDist[l]} (${pct}%)</div></div>`;
+  }).join("");
+
+  const isFinal = tpAkhirDec && tpAkhirDec.status!=="Menunggu Pengesahan";
+  const finalTp = isFinal ? tpAkhirDec.tpMuktamad : cad.cadanganTp;
+  box.innerHTML = `
+    <h3 class="section-title">${s.nama} (${s.kelas})</h3>
+    <div class="stat-grid" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="stat-icon" style="background:#e6ecfb;">📝</div><div><div class="stat-num">TP${tpAkhirDec?.tpMuktamad ? tpAkhirDec.tpMuktamad : (allRecs.length ? allRecs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp.replace('TP','') : '-')}</div><div class="stat-lbl">TP Semasa (terkini)</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:${isFinal?'#dcfce7':'#fef3c7'};">🎯</div><div><div class="stat-num">TP${finalTp}</div><div class="stat-lbl">${isFinal?'TP Akhir Muktamad':'TP Akhir Cadangan'}</div></div></div>
+    </div>
+    <h4 class="section-title">1. Analisis Setiap Bidang</h4>
+    ${bidangCards}
+
+    <h4 class="section-title" style="margin-top:18px;">2. Profil Keseluruhan 7 Bidang</h4>
+    <div class="table-wrap" style="margin-bottom:8px;max-height:200px;"><table><thead><tr><th>Bidang</th><th>TP Bidang</th><th>Bil. Tajuk</th></tr></thead><tbody>${profilRows}</tbody></table></div>
+    <div class="small-note" style="margin-bottom:16px;">${bidangSummaryTxt}</div>
+
+    <h4 class="section-title">3. Analisis Keseluruhan ${cad.profile.totalTopics} Tajuk</h4>
+    <div style="margin-bottom:16px;">${topicRows}</div>
+
+    <h4 class="section-title">4. Cadangan TP Akhir</h4>
+    <div class="alert-box" style="background:${isFinal?'#ecfdf5':'#fff9ec'};border-color:${isFinal?'#a7f3d0':'#f4e2b8'};">
+      <div class="a-icon">${isFinal?"✅":"🎯"}</div>
+      <div>
+        <b style="font-size:16px;">${isFinal?`TP Akhir Muktamad: TP${finalTp}`:`TP Akhir Cadangan: TP${cad.cadanganTp}`}</b>
+        <div class="a-sub" style="margin:4px 0;">Tahap Keyakinan Cadangan: <b>${cad.keyakinan}</b></div>
+        <div class="a-sub"><b>Sebab:</b> ${cad.reasons.join("; ")}.</div>
+        ${isFinal ? `<div class="a-sub" style="margin-top:6px;">Status: <b>${tpAkhirDec.status}</b> pada ${fmtDate(tpAkhirDec.tarikhPengesahan)}${tpAkhirDec.catatan?`<br>Catatan: "${tpAkhirDec.catatan}"`:""}</div>` : ""}
+      </div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn-primary btn-sm" data-sahkan-tp-akhir="1" data-cadangan-tp="${cad.cadanganTp}">✓ Sahkan TP${cad.cadanganTp}</button>
+      <button class="btn-outline btn-sm" data-ubah-tp-akhir="1">✎ Pilih TP Lain</button>
+    </div>
+    <div id="ubahTpAkhirPanel" style="display:none;margin-top:10px;padding:14px;background:#f8f9fb;border-radius:10px;border:1px solid var(--border);">
+      <label style="font-size:12px;color:var(--muted);font-weight:700;">Pilih TP Akhir</label>
+      <div class="tp-row" id="ubahTpAkhirRow" style="margin:6px 0 10px;">${TP_LIST.map(tp=>`<button class="tp-btn ${tpClass(tp)}" data-final-tp="${tp}">${tp}</button>`).join("")}</div>
+      <label style="font-size:12px;color:var(--muted);font-weight:700;">Catatan Pertimbangan Profesional (pilihan)</label>
+      <textarea id="catatanTpAkhir" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:6px 0 10px;" placeholder="Contoh: Murid menunjukkan penguasaan konsisten..."></textarea>
+      <button class="btn-primary btn-sm" id="btnConfirmUbahTpAkhir">Simpan Keputusan</button>
+    </div>
+  `;
+}
+
 function renderLihatMuridModal(studentId){
   lihatMuridId = studentId;
   const s = studentById(studentId); if(!s) return;
   document.getElementById("lihatMuridNama").textContent = `Rekod: ${s.nama}`;
   const year = getYearFromClass(s.kelas);
-
-  const summaryBox = document.getElementById("lihatTpSummary");
-  const allRecs = state.records.filter(r=>r.studentId===studentId);
-  if(allRecs.length===0){
-    summaryBox.innerHTML = `<div class="small-note" style="margin-bottom:14px;">Belum ada rekod TP untuk murid ini lagi.</div>`;
-  } else {
-    const cad = computeTpAkhirCadangan(studentId);
-    const tpAkhirDec = getTpAkhirDecision(studentId);
-
-    // 1. Analisis Setiap Bidang
-    const bidangCards = cad.profile.bidangList.filter(b=>b.count>0).map(b=>{
-      const distTxt = [5,4,3,2,1].filter(l=>b.dist[l]>0).map(l=>`TP${l}: ${b.dist[l]} tajuk`).join(" · ");
-      const decided = b.decision && b.decision.status!=="Cadangan Sistem";
-      return `<div class="tajuk-bidang-block">
-        <h4>${b.label} <span class="small-note">(${b.count} tajuk)</span></h4>
-        <div class="small-note" style="margin-bottom:6px;">${distTxt}</div>
-        <div class="small-note">TP Tertinggi: <b>TP${b.highest}</b> · TP Terendah: <b>TP${b.lowest}</b> · ${b.pctTP4plus}% capai TP4+ · ${b.pctTP5plus}% capai TP5+</div>
-        <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <span class="small-note">Cadangan TP Bidang: <b>${b.cadanganLabel}</b></span>
-          ${decided
-            ? `<span class="badge" style="background:#dcfce7;color:#166534;">TP${b.tpBidangFinal} — ${b.decision.status}</span>`
-            : `<span class="badge" style="background:#fef3c7;color:#92400e;">Cadangan Sistem — Pertimbangan Guru Diperlukan</span>`}
-        </div>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <button class="btn-outline btn-sm" data-sahkan-bidang="${b.key}" data-cadangan-tp="${b.cadanganTp}">✓ Sahkan TP${b.cadanganTp}</button>
-          <select data-ubah-bidang-select="${b.key}" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;">
-            ${TP_LIST.map(tp=>`<option value="${tp.replace('TP','')}" ${b.decision&&String(b.decision.tpBidang)===tp.replace('TP','')?'selected':''}>${tp}</option>`).join("")}
-          </select>
-          <button class="btn-outline btn-sm" data-ubah-bidang="${b.key}">✎ Tetapkan TP Lain</button>
-        </div>
-      </div>`;
-    }).join("");
-
-    // 2. Profil Keseluruhan 7 Bidang
-    const profilRows = cad.profile.withData.map(b=>`<tr><td>${b.label}</td><td><span class="badge ${tpClass('TP'+b.tpBidangFinal)}">TP${b.tpBidangFinal}</span></td><td>${b.count}</td></tr>`).join("");
-    const bidangSummaryTxt = [5,4,3,2,1].filter(l=>cad.profile.bidangCountByTp[l]>0).map(l=>`TP${l}: ${cad.profile.bidangCountByTp[l]} bidang`).join(" · ");
-
-    // 3. Analisis Keseluruhan Tajuk
-    const topicRows = [5,4,3,2,1].filter(l=>cad.profile.topicDist[l]>0).map(l=>{
-      const pct = Math.round(cad.profile.topicDist[l]/cad.profile.totalTopics*100);
-      return `<div class="rank-row"><div class="rank-label" style="width:60px;">TP${l}</div><div class="rank-bar-track"><div class="rank-bar-fill" style="width:${pct}%;background:${gradeColor(['','','','','',''][0]||'#c9973e')};background:#c9973e;"></div></div><div class="rank-val">${cad.profile.topicDist[l]} (${pct}%)</div></div>`;
-    }).join("");
-
-    // 5. Cadangan TP Akhir
-    const isFinal = tpAkhirDec && tpAkhirDec.status!=="Menunggu Pengesahan";
-    const finalTp = isFinal ? tpAkhirDec.tpMuktamad : cad.cadanganTp;
-    summaryBox.innerHTML = `
-      <h4 class="section-title">1. Analisis Setiap Bidang</h4>
-      ${bidangCards}
-
-      <h4 class="section-title" style="margin-top:18px;">2. Profil Keseluruhan 7 Bidang</h4>
-      <div class="table-wrap" style="margin-bottom:8px;max-height:200px;"><table><thead><tr><th>Bidang</th><th>TP Bidang</th><th>Bil. Tajuk</th></tr></thead><tbody>${profilRows}</tbody></table></div>
-      <div class="small-note" style="margin-bottom:16px;">${bidangSummaryTxt}</div>
-
-      <h4 class="section-title">3. Analisis Keseluruhan ${cad.profile.totalTopics} Tajuk</h4>
-      <div style="margin-bottom:16px;">${topicRows}</div>
-
-      <h4 class="section-title">4. Cadangan TP Akhir</h4>
-      <div class="alert-box" style="background:${isFinal?'#ecfdf5':'#fff9ec'};border-color:${isFinal?'#a7f3d0':'#f4e2b8'};">
-        <div class="a-icon">${isFinal?"✅":"🎯"}</div>
-        <div>
-          <b style="font-size:16px;">${isFinal?`TP Akhir Muktamad: TP${finalTp}`:`TP Akhir Cadangan: TP${cad.cadanganTp}`}</b>
-          <div class="a-sub" style="margin:4px 0;">Tahap Keyakinan Cadangan: <b>${cad.keyakinan}</b></div>
-          <div class="a-sub"><b>Sebab:</b> ${cad.reasons.join("; ")}.</div>
-          ${isFinal ? `<div class="a-sub" style="margin-top:6px;">Status: <b>${tpAkhirDec.status}</b> pada ${fmtDate(tpAkhirDec.tarikhPengesahan)}${tpAkhirDec.catatan?`<br>Catatan: "${tpAkhirDec.catatan}"`:""}</div>` : ""}
-        </div>
-      </div>
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-primary btn-sm" data-sahkan-tp-akhir="1" data-cadangan-tp="${cad.cadanganTp}">✓ Sahkan TP${cad.cadanganTp}</button>
-        <button class="btn-outline btn-sm" data-ubah-tp-akhir="1">✎ Pilih TP Lain</button>
-      </div>
-      <div id="ubahTpAkhirPanel" style="display:none;margin-top:10px;padding:14px;background:#f8f9fb;border-radius:10px;border:1px solid var(--border);">
-        <label style="font-size:12px;color:var(--muted);font-weight:700;">Pilih TP Akhir</label>
-        <div class="tp-row" id="ubahTpAkhirRow" style="margin:6px 0 10px;">${TP_LIST.map(tp=>`<button class="tp-btn ${tpClass(tp)}" data-final-tp="${tp}">${tp}</button>`).join("")}</div>
-        <label style="font-size:12px;color:var(--muted);font-weight:700;">Catatan Pertimbangan Profesional (pilihan)</label>
-        <textarea id="catatanTpAkhir" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:6px 0 10px;" placeholder="Contoh: Murid menunjukkan penguasaan konsisten..."></textarea>
-        <button class="btn-primary btn-sm" id="btnConfirmUbahTpAkhir">Simpan Keputusan</button>
-      </div>
-    `;
-  }
 
   const bidangSel = document.getElementById("lihatBidang");
   bidangSel.innerHTML = Object.entries(BIDANG).map(([k,b])=>`<option value="${k}">${b.label}</option>`).join("");
