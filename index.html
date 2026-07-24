@@ -1402,7 +1402,7 @@ function renderTpView(){
     <div class="alert-box" style="background:${isSemasaFinal?'#ecfdf5':'#eef2ff'};border-color:${isSemasaFinal?'#a7f3d0':'#c7d2fe'};">
       <div class="a-icon">${isSemasaFinal?"✅":"📊"}</div>
       <div>
-        <b style="font-size:16px;">${isSemasaFinal?`TP Semasa Muktamad: TP${semasaFinalTp}`:`Cadangan TP Semasa (Dominan): TP${semasa.cadanganLabel}`}</b>
+        <b style="font-size:16px;">${isSemasaFinal?`TP Semasa Muktamad: TP${semasaFinalTp}`:`Cadangan TP Semasa (Dominan): ${semasa.cadanganLabel}`}</b>
         <div class="a-sub" style="margin:4px 0;">TP dominan dikira daripada tajuk paling kerap dicapai murid.</div>
         ${isSemasaFinal ? `<div class="a-sub" style="margin-top:4px;">Status: <b>${tpSemasaDec.status}</b> pada ${fmtDate(tpSemasaDec.tarikhPengesahan)}${tpSemasaDec.catatan?`<br>Catatan: "${tpSemasaDec.catatan}"`:""}</div>` : ""}
       </div>
