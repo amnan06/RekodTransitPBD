@@ -838,6 +838,10 @@ let lihatMuridId=null;
 /* ================= LOCAL STORAGE ================= */
 async function storageGet(key){ try{ const v=localStorage.getItem(key); return v!==null?{key,value:v}:null; }catch(e){ return null; } }
 async function storageSet(key,value){ try{ localStorage.setItem(key,value); return {key,value}; }catch(e){ return null; } }
+/* Sesi log masuk guna sessionStorage (bukan localStorage) - hilang secara automatik
+   bila tab/browser ditutup, supaya laptop kongsi sentiasa minta login semula. */
+async function sessionGet(key){ try{ const v=sessionStorage.getItem(key); return v!==null?{key,value:v}:null; }catch(e){ return null; } }
+async function sessionSet(key,value){ try{ sessionStorage.setItem(key,value); return {key,value}; }catch(e){ return null; } }
 
 /* ================= GOOGLE SHEETS API ================= */
 /* (Auto-detect iframe URL dibuang - tidak boleh dipercayai; google.script.run kini utama) */
@@ -900,7 +904,7 @@ async function apiPost(action,payload){
 }
 function updateConnStatus(){
   const connected = isGasRunAvailable() || !!state.settings.apiUrl;
-  const s = connected ? "🟢 Disambung dengan Google Sheets" : "🔴 Mod Tempatan Sahaja";
+  const s = isSyncing ? "🔄 Menyegarkan data..." : (connected ? "🟢 Disambung dengan Google Sheets" : "🔴 Mod Tempatan Sahaja");
   const el = document.getElementById("connStatus2");
   if(el) el.textContent = s;
 }
@@ -1067,7 +1071,16 @@ async function loadState(){
   if(state.settings.apiUrl && state.settings.apiUrl.indexOf("googleusercontent.com")!==-1){
     state.settings.apiUrl = null;
   }
-  if(isGasRunAvailable() || state.settings.apiUrl){
+}
+let isSyncing = false;
+/* Tarik data terkini dari Google Sheets. Dipanggil DI LATAR BELAKANG (bukan
+   menyekat skrin log masuk) - selepas log masuk atau selepas sesi dipulihkan. */
+async function syncFromServer(){
+  if(isSyncing) return;
+  if(!(isGasRunAvailable() || state.settings.apiUrl)) return;
+  isSyncing = true;
+  updateConnStatus();
+  try{
     const server = await apiGet();
     if(server){
       state.students = server.students || [];
@@ -1087,7 +1100,16 @@ async function loadState(){
         if(server.settings.tajukKriteria){ try{ state.tajukKriteria = JSON.parse(server.settings.tajukKriteria); }catch(e){} }
       }
       await saveState();
+      // Kalau dah masuk app, segarkan paparan semasa senyap-senyap dengan data terkini
+      if(session.currentUser && document.getElementById("appShell").style.display!=="none"){
+        refreshAllViews();
+        const activeNav = document.querySelector(".nav-item.active");
+        if(activeNav && activeNav.dataset.view) switchView(activeNav.dataset.view);
+      }
     }
+  } finally {
+    isSyncing = false;
+    updateConnStatus();
   }
 }
 let saveTimer=null;
@@ -1105,30 +1127,36 @@ function tryLogin(username, password){
 let appDataReady = false;
 async function doLogin(){
   const errEl = document.getElementById("loginError");
-  if(!appDataReady){ errEl.textContent="Sila tunggu, data sedang dimuat..."; return; }
   const uname = document.getElementById("loginUsername").value;
   const pass = document.getElementById("loginPassword").value;
   if(!uname || !pass){ errEl.textContent="Sila isi nama pengguna & kata laluan."; return; }
-  const user = tryLogin(uname, pass);
+  let user = tryLogin(uname, pass);
+  if(!user){
+    // Cache tempatan mungkin lapuk (contoh: akaun baharu ditambah dari peranti lain) - cuba segerak sekali sebelum tolak log masuk
+    errEl.textContent = "Menyemak data terkini...";
+    await syncFromServer();
+    user = tryLogin(uname, pass);
+  }
   if(!user){ errEl.textContent="Nama pengguna atau kata laluan salah."; return; }
   errEl.textContent="";
   session.currentUser = { id:user.id, nama:user.nama, username:user.username, peranan:user.peranan };
-  await storageSet("pi-session", JSON.stringify(session.currentUser));
+  await sessionSet("pi-session", JSON.stringify(session.currentUser));
   const now = new Date().toLocaleString("ms-MY");
   user.lastLogin = now;
   await saveState();
   apiPost("updateUserLogin", { id:user.id, timestamp: now });
   enterApp();
+  syncFromServer(); // segarkan data terkini di latar belakang, senyap-senyap
 }
 async function tryRestoreSession(){
-  const r = await storageGet("pi-session");
+  const r = await sessionGet("pi-session");
   if(r && r.value){
     try{ const u = JSON.parse(r.value); const stillExists = state.users.find(x=>x.id===u.id); if(stillExists) session.currentUser = u; }catch(e){}
   }
 }
 function doLogout(){
   session.currentUser = null;
-  storageSet("pi-session","");
+  sessionSet("pi-session","");
   document.getElementById("appShell").style.display="none";
   document.getElementById("loginScreen").style.display="flex";
   document.getElementById("loginUsername").value="";
@@ -2368,12 +2396,17 @@ document.getElementById("loginPassword").addEventListener("keydown",(e)=>{ if(e.
 
 /* ================= INIT ================= */
 async function init(){
-  await loadState();
-  await tryRestoreSession();
-  if(session.currentUser){ enterApp(); return; }
-  const btn = document.getElementById("btnLogin");
-  if(btn){ btn.disabled=false; btn.textContent="Log Masuk"; }
+  await loadState();          // laju - cache tempatan sahaja
+  await tryRestoreSession();  // sesi (sessionStorage) - hilang bila tab/browser ditutup
   appDataReady = true;
+  const btn = document.getElementById("btnLogin");
+  if(session.currentUser){
+    enterApp();
+    syncFromServer(); // segarkan data terkini di latar belakang
+    return;
+  }
+  if(btn){ btn.disabled=false; btn.textContent="Log Masuk"; }
+  syncFromServer(); // mula tarik data terkini di latar belakang semasa cikgu taip username/password
 }
 init();
 </script>
