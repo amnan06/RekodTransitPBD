@@ -1154,6 +1154,7 @@ function switchView(view){
   if(view==="murid") renderMuridView();
   if(view==="rekod") renderRekodTable();
   if(view==="tajuk") renderTajukManage();
+  if(view==="tp") renderTpView();
   if(view==="exam") renderExamSection();
   if(view==="analisis") renderAnalysis();
   if(view==="cetak") renderCetakView();
@@ -2326,6 +2327,8 @@ document.getElementById("muridSearch")?.addEventListener("input",(e)=>{ muridFil
 document.getElementById("rekodFilterKelas")?.addEventListener("change",(e)=>{ rekodFilter.kelas=e.target.value; renderRekodTable(); });
 document.getElementById("rekodFilterTp")?.addEventListener("change",(e)=>{ rekodFilter.tp=e.target.value; renderRekodTable(); });
 document.getElementById("rekodSearch")?.addEventListener("input",(e)=>{ rekodFilter.search=e.target.value; renderRekodTable(); });
+document.getElementById("tpViewKelasSelect")?.addEventListener("change",()=>{ tpViewStudentId=null; renderTpView(); });
+document.getElementById("tpViewMuridSelect")?.addEventListener("change",(e)=>{ tpViewStudentId=e.target.value; renderTpView(); });
 document.getElementById("lihatEvidence")?.addEventListener("change",(e)=>{
   const f=e.target.files[0]; if(!f) return;
   compressImage(f,dataUrl=>{ const img=document.getElementById("lihatEvidenceThumb"); img.src=dataUrl; img.style.display="inline-block"; });
