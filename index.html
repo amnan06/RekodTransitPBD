@@ -56,9 +56,13 @@ input,select{font-family:inherit;}
 .nav-item:hover{background:var(--navy-light);}
 .nav-item.active{background:var(--gold);color:var(--navy-dark);}
 .nav-item .emoji{font-size:16px;width:20px;text-align:center;}
-.sidebar-quote{margin-top:auto;background:var(--navy-light);border-radius:12px;padding:14px 16px;font-size:11.5px;color:#c7cee6;}
-.sidebar-quote .qtitle{font-size:10px;letter-spacing:.5px;color:#8f9bc2;font-weight:800;margin-bottom:6px;}
-.sidebar-quote .qtext{color:var(--gold-light);font-weight:700;font-size:12.5px;margin-bottom:6px;}
+.sidebar-quote{margin-top:auto;background:var(--navy-light);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;font-size:11px;color:#c7cee6;}
+.sidebar-quote .qtitle{font-size:9px;letter-spacing:.5px;color:#8f9bc2;font-weight:800;margin-bottom:5px;}
+.sidebar-quote .qheading{color:var(--gold-light);font-weight:800;font-size:12.5px;line-height:1.25;margin-bottom:6px;}
+.sidebar-quote .qtext{color:#f2f4f9;font-weight:500;font-style:italic;font-size:11px;line-height:1.4;margin-bottom:8px;}
+.sidebar-quote .qdivider{border-top:1px dashed rgba(255,255,255,.2);margin-bottom:7px;}
+.sidebar-quote .qtip{display:flex;align-items:flex-start;gap:6px;color:#c7cee6;font-size:10.5px;line-height:1.35;}
+.sidebar-quote .qtip-icon{flex-shrink:0;font-size:11px;}
 
 .main-area{flex:1;min-width:0;}
 .topbar{background:#fff;border-bottom:1px solid var(--border);padding:14px 28px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:50;}
@@ -322,8 +326,11 @@ html,body{overflow-x:hidden;max-width:100%;}
     <button class="nav-item admin-only-nav" data-view="selenggara"><span class="emoji">⚙️</span> Selenggara</button>
 
     <div class="sidebar-quote">
-      <div class="qtitle">PESANAN</div>
-      <div class="qtext" id="quoteText">"Sebaik-baik manusia adalah yang paling bermanfaat kepada manusia lain."</div>
+      <div class="qtitle">PESANAN IMAM AL-GHAZALI</div>
+      <div class="qheading" id="quoteHeading">Utamakan Akhirat, Bukan Dunia</div>
+      <div class="qtext" id="quoteText">"Dunia ini ladang. Akhiratlah tempat menuai."</div>
+      <div class="qdivider"></div>
+      <div class="qtip"><span class="qtip-icon">💡</span><span id="quoteTip">Kejar akhirat, dunia akan ikut.</span></div>
     </div>
   </aside>
 
@@ -812,29 +819,29 @@ function getTajukList(year, bidangKey){
 }
 const TP_LIST = ["TP1","TP2","TP3","TP4","TP5","TP6"];
 const QUOTES = [
-  "\"Ilmu yang tidak diamalkan ibarat pokok yang tidak berbuah.\" — Imam Al-Ghazali",
-  "\"Amal ibarat tubuh. Ikhlas adalah roh. Amal tanpa ikhlas seperti mayat tak bernyawa.\" — Imam Al-Ghazali",
-  "\"Hati yang penuh dengan riak, hasad dan takabbur tidak akan nampak kebenaran.\" — Imam Al-Ghazali",
-  "\"Kematian adalah pintu yang akan dilalui semua makhluk.\" — Imam Al-Ghazali",
-  "\"Orang berakal tidak akan membuang masa pada sesuatu yang tidak berguna.\" — Imam Al-Ghazali",
-  "\"Bekalmu ke akhirat bukan ilmu yang kau tahu, tapi amal yang kau buat.\" — Imam Al-Ghazali",
-  "\"Hidayah itu milik Allah. Jangan sombong dengan amal, mohon agar Dia terus pimpin.\" — Imam Al-Ghazali",
-  "\"Yang benar tetap benar walaupun sedikit yang ikut.\" — Imam Al-Ghazali",
-  "\"Jangan tangguh taubat. Kematian tidak pernah menunggu.\" — Imam Al-Ghazali",
-  "\"Setiap kematian adalah peringatan kepada yang masih hidup.\" — Imam Al-Ghazali",
-  "\"Ambillah ilmu dari guru yang mengamalkan apa yang diajarkan.\" — Imam Al-Ghazali",
-  "\"Jalan ke syurga tidak ditabur bunga, tetapi duri ujian.\" — Imam Al-Ghazali",
-  "\"Maksiat itu racun bagi hati. Jangan beri alasan untuk terus berdosa.\" — Imam Al-Ghazali",
-  "\"Sahabat yang soleh adalah cermin dan pelindung dari kebinasaan.\" — Imam Al-Ghazali",
-  "\"Zikrullah adalah makanan hati. Tanpa zikir, hati jadi keras.\" — Imam Al-Ghazali",
-  "\"Rezeki yang halal membawa keberkatan, walau sedikit.\" — Imam Al-Ghazali",
-  "\"Manusia akan lupa. Tapi Allah tak pernah lalai.\" — Imam Al-Ghazali",
-  "\"Al-Quran adalah ubat bagi jiwa, cahaya bagi hati.\" — Imam Al-Ghazali",
-  "\"Solat itu tiang agama. Jika runtuh, runtuhlah seluruh binaan iman.\" — Imam Al-Ghazali",
-  "\"Akhlak lebih berat dari amal di timbangan akhirat.\" — Imam Al-Ghazali",
-  "\"Barang siapa yang tidak menghisab dirinya, dia sedang berjalan ke arah kebinasaan.\" — Imam Al-Ghazali",
-  "\"Masa muda seperti emas yang sukar dicari kembali.\" — Imam Al-Ghazali",
-  "\"Dunia ini ladang. Akhiratlah tempat menuai.\" — Imam Al-Ghazali"
+  {title:"Ilmu Tanpa Amal Tiada Guna", quote:"Ilmu yang tidak diamalkan ibarat pokok yang tidak berbuah.", tip:"Belajar untuk beramal, bukan sekadar tahu."},
+  {title:"Amal Tanpa Ikhlas Sia-Sia", quote:"Amal ibarat tubuh. Ikhlas adalah roh. Amal tanpa ikhlas seperti mayat tak bernyawa.", tip:"Periksa niat kita hari ini."},
+  {title:"Bersihkan Hati dari Penyakit Rohani", quote:"Hati yang penuh dengan riak, hasad dan takabbur tidak akan nampak kebenaran.", tip:"Rawat hati sebelum terlambat."},
+  {title:"Kematian Itu Pasti", quote:"Kematian adalah pintu yang akan dilalui semua makhluk.", tip:"Sudah bersediakah kita?"},
+  {title:"Jangan Sibuk dengan Perkara Sia-Sia", quote:"Orang berakal tidak akan membuang masa pada sesuatu yang tidak berguna.", tip:"Buat apa yang penting, bukan apa yang popular."},
+  {title:"Jadikan Amal sebagai Bekal", quote:"Bekalmu ke akhirat bukan ilmu yang kau tahu, tapi amal yang kau buat.", tip:"Amal hari ini, untuk hidup yang kekal nanti."},
+  {title:"Banyakkan Doa dan Minta Hidayah", quote:"Hidayah itu milik Allah. Jangan sombong dengan amal, mohon agar Dia terus pimpin.", tip:"Jangan berhenti minta petunjuk."},
+  {title:"Jangan Tertipu dengan Ramai Orang", quote:"Yang benar tetap benar walaupun sedikit yang ikut.", tip:"Berpegang pada kebenaran, bukan ikut majoriti."},
+  {title:"Segerakan Taubat", quote:"Jangan tangguh taubat. Kematian tidak pernah menunggu.", tip:"Jangan tunggu esok untuk taubat hari ini."},
+  {title:"Ambil Pengajaran dari Kematian", quote:"Setiap kematian adalah peringatan kepada yang masih hidup.", tip:"Belajar dari kematian sebelum kita dipelajari."},
+  {title:"Berguru dengan Orang Soleh", quote:"Ambillah ilmu dari guru yang mengamalkan apa yang diajarkan.", tip:"Cari guru yang membimbing dengan hati dan akhlak."},
+  {title:"Bersabar atas Jalan Kebaikan", quote:"Jalan ke syurga tidak ditabur bunga, tetapi duri ujian.", tip:"Sabar adalah kunci istiqamah."},
+  {title:"Tinggalkan Maksiat Sepenuhnya", quote:"Maksiat itu racun bagi hati. Jangan beri alasan untuk terus berdosa.", tip:"Berani tinggalkan dosa, walau terasa susah."},
+  {title:"Pilih Sahabat yang Baik", quote:"Sahabat yang soleh adalah cermin dan pelindung dari kebinasaan.", tip:"Nilai semula siapa kita rapat hari ini."},
+  {title:"Sentiasa Berzikir dan Ingat Allah", quote:"Zikrullah adalah makanan hati. Tanpa zikir, hati jadi keras.", tip:"Lapangkan masa untuk ingat Allah, walau sesaat."},
+  {title:"Usaha Cari Rezeki Halal", quote:"Rezeki yang halal membawa keberkatan, walau sedikit.", tip:"Jangan gadaikan akhirat demi sedikit dunia."},
+  {title:"Jangan Kejar Pujian Manusia", quote:"Manusia akan lupa. Tapi Allah tak pernah lalai.", tip:"Redha Allah lebih utama dari like dan views."},
+  {title:"Baca & Fahami Al-Quran", quote:"Al-Quran adalah ubat bagi jiwa, cahaya bagi hati.", tip:"Mulakan dengan satu ayat sehari, fahami maknanya."},
+  {title:"Jaga Solat Lima Waktu", quote:"Solat itu tiang agama. Jika runtuh, runtuhlah seluruh binaan iman.", tip:"Jangan tinggalkan solat, walau sesibuk mana pun."},
+  {title:"Hiasi Diri dengan Akhlak Mulia", quote:"Akhlak lebih berat dari amal di timbangan akhirat.", tip:"Akhlak indah cerminan iman."},
+  {title:"Muhasabah Diri Setiap Hari", quote:"Barang siapa yang tidak menghisab dirinya, dia sedang berjalan ke arah kebinasaan.", tip:"Tanya diri setiap malam: \u201cApa yang aku buat hari ini kerana Allah?\u201d"},
+  {title:"Gunakan Masa Muda Sebaiknya", quote:"Masa muda seperti emas yang sukar dicari kembali.", tip:"Guna masa dengan bijak, bukan ikut hawa nafsu."},
+  {title:"Utamakan Akhirat, Bukan Dunia", quote:"Dunia ini ladang. Akhiratlah tempat menuai.", tip:"Kejar akhirat, dunia akan ikut."}
 ];
 
 /* ================= STATE ================= */
@@ -1187,7 +1194,10 @@ function enterApp(){
   document.getElementById("userNameLabel").textContent = session.currentUser.nama;
   const isAdmin = session.currentUser.peranan === "Admin";
   document.querySelectorAll(".admin-only-nav").forEach(el=> el.style.display = isAdmin ? "" : "none");
-  document.getElementById("quoteText").textContent = QUOTES[Math.floor(Math.random()*QUOTES.length)];
+  const q = QUOTES[Math.floor(Math.random()*QUOTES.length)];
+  document.getElementById("quoteHeading").textContent = q.title;
+  document.getElementById("quoteText").textContent = `"${q.quote}"`;
+  document.getElementById("quoteTip").textContent = q.tip;
   switchView("dashboard");
   refreshAllViews();
   startClock();
