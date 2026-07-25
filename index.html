@@ -1292,12 +1292,12 @@ function renderDashboard(){
   tabsEl.innerHTML = YEARS.map(y=>`<button data-year="${y}" class="${tabsEl.dataset.year===y?'active':''}">Tahun ${y}</button>`).join("");
   renderDashClassProgress(tabsEl.dataset.year);
 
-  const activeMemo = (state.settings.deadlineMemos && state.settings.deadlineMemos[0]) || null;
-  const daysLeft = activeMemo && activeMemo.date ? Math.ceil((new Date(activeMemo.date) - new Date())/86400000) : null;
+  const allMemos = state.settings.deadlineMemos || [];
   let alertsHtml = "";
-  if(activeMemo){
-    alertsHtml += `<div class="alert-box"><div class="a-icon">⚠️</div><div><b>${activeMemo.text}</b><div class="a-sub">${daysLeft!==null ? (daysLeft>=0? daysLeft+" hari lagi" : "Tarikh sudah lepas") : ""}</div></div></div>`;
-  }
+  allMemos.forEach(m=>{
+    const dLeft = m.date ? Math.ceil((new Date(m.date) - new Date())/86400000) : null;
+    alertsHtml += `<div class="alert-box"><div class="a-icon">⚠️</div><div><b>${m.text}</b><div class="a-sub">${dLeft!==null ? (dLeft>=0? dLeft+" hari lagi" : "Tarikh sudah lepas") : ""}</div></div></div>`;
+  });
   alertsHtml += `<div class="alert-box"><div class="a-icon">📋</div><div><b>${belumMula} murid masih belum ada rekod TP</b><div class="a-sub">Lihat Senarai Murid untuk perincian</div></div></div>`;
   const weekAgo = Date.now() - 7*86400000;
   const thisWeek = state.records.filter(r=>new Date(r.tarikh).getTime()>=weekAgo).length;
@@ -1861,13 +1861,13 @@ function renderSelenggaraView(){
     arkibWrap.innerHTML = `<p class="small-note">Belum ada memo disimpan.</p>`;
   } else {
     arkibWrap.innerHTML = `
-      <div class="small-note" style="font-weight:800;margin-bottom:8px;">Arkib Peringatan (${memos.length})</div>
+      <div class="small-note" style="font-weight:800;margin-bottom:8px;">Arkib Peringatan (${memos.length}) — semua papar di Dashboard</div>
       <div style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow:auto;">
         ${memos.map((m,idx)=>`
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 12px;background:${idx===0?'#fef9ec':'#f8f9fb'};border:1px solid var(--border);border-radius:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8f9fb;border:1px solid var(--border);border-radius:8px;">
             <div>
               <b style="font-size:13px;">${m.text}</b>
-              <div class="small-note" style="margin-top:2px;">${m.date?"Tarikh deadline: "+fmtDate(m.date):"Tiada tarikh"} ${idx===0?"· <b>Aktif di Dashboard</b>":""}</div>
+              <div class="small-note" style="margin-top:2px;">${m.date?"Tarikh deadline: "+fmtDate(m.date):"Tiada tarikh"}</div>
             </div>
             <button class="icon-btn" data-del-memo="${m.id}" title="Padam">🗑️</button>
           </div>
