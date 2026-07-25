@@ -47,7 +47,7 @@ input,select{font-family:inherit;}
 
 /* ===== APP SHELL ===== */
 #appShell{display:flex;min-height:100vh;}
-.sidebar{width:262px;flex-shrink:0;background:var(--navy);color:#fff;display:flex;flex-direction:column;padding:22px 16px;position:sticky;top:0;height:100vh;overflow-y:auto;}
+.sidebar{width:262px;flex-shrink:0;background:var(--navy);color:#fff;display:flex;flex-direction:column;padding:22px 16px;position:sticky;top:0;min-height:100vh;align-self:flex-start;}
 .sidebar-brand{display:flex;gap:12px;align-items:center;margin-bottom:26px;padding:0 6px;}
 .sidebar-brand .icon{width:46px;height:46px;border-radius:12px;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
 .sidebar-brand .txt{font-weight:800;font-size:14.5px;line-height:1.25;}
@@ -58,6 +58,11 @@ input,select{font-family:inherit;}
 .nav-item .emoji{font-size:16px;width:20px;text-align:center;}
 .nav-badge{margin-left:auto;background:#dc2626;color:#fff;font-size:10.5px;font-weight:800;border-radius:20px;padding:2px 7px;min-width:18px;text-align:center;line-height:1.4;}
 .nav-item.active .nav-badge{background:#fff;color:#dc2626;}
+.tp-murid-chip{background:#f3f4f6;border:1.5px solid var(--border);border-radius:20px;padding:8px 16px;font-weight:700;font-size:13px;color:var(--text);cursor:pointer;transition:.15s;}
+.tp-murid-chip:hover{background:#e5e7eb;}
+.tp-murid-chip.active{background:var(--navy);border-color:var(--navy);color:#fff;}
+.tp-murid-chip .small-note{color:var(--muted);font-weight:600;}
+.tp-murid-chip.active .small-note{color:#c7cee6;}
 .sidebar-quote{margin-top:18px;background:var(--navy-light);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;font-size:11px;color:#c7cee6;}
 .sidebar-quote .qtitle{font-size:9px;letter-spacing:.5px;color:#8f9bc2;font-weight:800;margin-bottom:5px;}
 .sidebar-quote .qheading{color:var(--gold-light);font-weight:800;font-size:12.5px;line-height:1.25;margin-bottom:6px;}
@@ -335,7 +340,7 @@ html,body{overflow-x:hidden;max-width:100%;}
     <button class="nav-item" data-view="murid"><span class="emoji">🎓</span> Murid</button>
     <button class="nav-item" data-view="rekod"><span class="emoji">📝</span> Rekod</button>
     <button class="nav-item" data-view="tajuk"><span class="emoji">📚</span> Tajuk</button>
-    <button class="nav-item" data-view="tp"><span class="emoji">🎯</span> Tahap Penguasaan (TP)<span id="tpNavBadge" class="nav-badge admin-only-nav" style="display:none;"></span></button>
+    <button class="nav-item" data-view="tp"><span class="emoji">🎯</span> Tahap Penguasaan<span id="tpNavBadge" class="nav-badge admin-only-nav" style="display:none;"></span></button>
     <button class="nav-item" data-view="exam"><span class="emoji">🖊️</span> UPSA &amp; UASA</button>
 
     <div class="nav-section-label">Laporan</div>
@@ -364,6 +369,9 @@ html,body{overflow-x:hidden;max-width:100%;}
         <select id="classSelect" style="display:none;"></select>
       </div>
       <div class="topbar-left">
+        <button class="icon-btn admin-only-nav" id="btnTpInboxBell" style="display:none;position:relative;font-size:19px;" title="Peringatan pengesahan TP" data-goto-tp-inbox="1">
+          🔔<span id="tpBellBadge" class="nav-badge" style="display:none;position:absolute;top:-4px;right:-4px;"></span>
+        </button>
         <div class="pill user">👤 <span id="userNameLabel"></span></div>
         <button class="btn-logout" id="btnLogout">🚪 Log Keluar</button>
       </div>
@@ -432,8 +440,10 @@ html,body{overflow-x:hidden;max-width:100%;}
         <h2 class="page-title">Rekod TP &amp; Eviden</h2>
         <div class="toolbar-row">
           <button class="btn-gold" id="btnUploadPukal">📤 Upload Pukal</button>
-          <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Semua TP (Kelas Ditapis)</button>
-          <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Semua TP (Kelas Ditapis)</button>
+            <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
+          </div>
         </div>
         <div class="toolbar-row" style="gap:10px;">
           <select id="rekodFilterKelas" style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--border);font-weight:700;font-size:13.5px;"></select>
@@ -470,11 +480,14 @@ html,body{overflow-x:hidden;max-width:100%;}
       <!-- ===== TAHAP PENGUASAAN (TP) VIEW ===== -->
       <div class="view" data-view="tp">
         <div class="eyebrow">DASHBOARD GURU</div>
-        <h2 class="page-title">Tahap Penguasaan (TP)</h2>
+        <h2 class="page-title">Tahap Penguasaan</h2>
         <div class="card" style="margin-bottom:18px;">
-          <div class="form-row" style="margin-bottom:0;">
-            <div class="field"><label>Pilih Kelas</label><select id="tpViewKelasSelect"></select></div>
-            <div class="field"><label>Pilih Murid</label><select id="tpViewMuridSelect"></select></div>
+          <div class="field" style="max-width:280px;margin-bottom:14px;"><label>Pilih Kelas</label><select id="tpViewKelasSelect"></select></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nama</th><th>Kelas</th><th></th></tr></thead>
+              <tbody id="tpViewMuridList"></tbody>
+            </table>
           </div>
         </div>
         <div class="card" id="tpViewContent">
@@ -1276,11 +1289,24 @@ function getPendingTpCount(){
 }
 function updateAdminTpBadge(){
   const badge = document.getElementById("tpNavBadge");
+  const bell = document.getElementById("btnTpInboxBell");
+  const bellBadge = document.getElementById("tpBellBadge");
   if(!badge) return;
-  if(!session.currentUser || session.currentUser.peranan!=="Admin"){ badge.style.display="none"; return; }
+  if(!session.currentUser || session.currentUser.peranan!=="Admin"){
+    badge.style.display="none";
+    if(bell) bell.style.display="none";
+    return;
+  }
   const n = getPendingTpCount();
-  if(n>0){ badge.textContent = n; badge.style.display="inline-block"; }
-  else { badge.style.display="none"; }
+  if(n>0){
+    badge.textContent = n; badge.style.display="inline-block";
+    if(bell){ bell.style.display="inline-flex"; }
+    if(bellBadge){ bellBadge.textContent = n; bellBadge.style.display="inline-block"; }
+  } else {
+    badge.style.display="none";
+    if(bell) bell.style.display="inline-flex";
+    if(bellBadge) bellBadge.style.display="none";
+  }
 }
 function renderDashboard(){
   const nama = session.currentUser ? session.currentUser.nama : "";
@@ -1314,7 +1340,7 @@ function renderDashboard(){
   if(session.currentUser && session.currentUser.peranan==="Admin"){
     const pendingCount = getPendingTpCount();
     if(pendingCount>0){
-      alertsHtml += `<div class="alert-box" style="background:#fef2f2;border-color:#fecaca;cursor:pointer;" data-goto-tp-inbox="1"><div class="a-icon">🔔</div><div><b>${pendingCount} murid menunggu pengesahan TP Akhir</b><div class="a-sub">Klik untuk semak di Tab Tahap Penguasaan (TP)</div></div></div>`;
+      alertsHtml += `<div class="alert-box" style="background:#fef2f2;border-color:#fecaca;cursor:pointer;" data-goto-tp-inbox="1"><div class="a-icon">🔔</div><div><b>${pendingCount} murid menunggu pengesahan TP Akhir</b><div class="a-sub">Klik untuk semak di Tab Tahap Penguasaan</div></div></div>`;
     }
   }
   updateAdminTpBadge();
@@ -1474,14 +1500,20 @@ let tpViewStudentId = null;
 function renderTpViewSelectors(){
   const kelasSel = document.getElementById("tpViewKelasSelect");
   if(!kelasSel.dataset.built){ kelasSel.innerHTML = `<option value="ALL">Semua Kelas</option>` + CLASSES.map(c=>`<option value="${c}">${c.toUpperCase()}</option>`).join(""); kelasSel.dataset.built="1"; }
-  const muridSel = document.getElementById("tpViewMuridSelect");
   const kelasFilter = kelasSel.value;
   let studs = sortByClassThenName(state.students.filter(s=>!s.deleted));
   if(kelasFilter!=="ALL") studs = studs.filter(s=>s.kelas===kelasFilter);
-  muridSel.innerHTML = studs.map(s=>`<option value="${s.id}" ${s.id===tpViewStudentId?"selected":""}>${s.nama} (${s.kelas})</option>`).join("") || `<option value="">-- Tiada murid --</option>`;
   if(!tpViewStudentId && studs.length) tpViewStudentId = studs[0].id;
   if(studs.length && !studs.some(s=>s.id===tpViewStudentId)) tpViewStudentId = studs[0].id;
-  muridSel.value = tpViewStudentId || "";
+  const listEl = document.getElementById("tpViewMuridList");
+  listEl.innerHTML = studs.length ? studs.map(s=>{
+    const active = s.id===tpViewStudentId;
+    return `<tr style="${active?'background:#fef9ec;':''}">
+      <td><div class="acc-row"><div class="avatar-circle">${initials(s.nama)}</div><b>${s.nama}</b></div></td>
+      <td>${s.kelas}</td>
+      <td><button class="btn-outline btn-sm" data-tp-pilih-murid="${s.id}">${active?'✓ Dipilih':'Lihat'}</button></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="3" class="empty-row">Tiada murid dalam kelas ini.</td></tr>`;
 }
 function renderTpView(){
   renderTpViewSelectors();
@@ -1917,6 +1949,10 @@ document.addEventListener("click", async (e)=>{
 
   if(t.closest("[data-goto-tp-inbox]")){
     switchView("tp");
+  }
+  if(t.dataset.tpPilihMurid){
+    tpViewStudentId = t.dataset.tpPilihMurid;
+    renderTpView();
   }
   const navBtn = t.closest(".nav-item");
   if(navBtn && navBtn.dataset.view){
@@ -2490,7 +2526,6 @@ document.getElementById("rekodFilterKelas")?.addEventListener("change",(e)=>{ re
 document.getElementById("rekodFilterTp")?.addEventListener("change",(e)=>{ rekodFilter.tp=e.target.value; renderRekodTable(); });
 document.getElementById("rekodSearch")?.addEventListener("input",(e)=>{ rekodFilter.search=e.target.value; renderRekodTable(); });
 document.getElementById("tpViewKelasSelect")?.addEventListener("change",()=>{ tpViewStudentId=null; renderTpView(); });
-document.getElementById("tpViewMuridSelect")?.addEventListener("change",(e)=>{ tpViewStudentId=e.target.value; renderTpView(); });
 document.getElementById("lihatEvidence")?.addEventListener("change",(e)=>{
   const f=e.target.files[0]; if(!f) return;
   compressImage(f,dataUrl=>{ const img=document.getElementById("lihatEvidenceThumb"); img.src=dataUrl; img.style.display="inline-block"; });
