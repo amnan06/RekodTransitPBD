@@ -378,7 +378,6 @@ html,body{overflow-x:hidden;max-width:100%;}
             <div class="school" id="bannerSchoolLine"></div>
           </div>
           <div class="banner-right">
-            <button class="btn-export" id="btnEksportPdf">📄 Eksport PDF</button>
             <div class="clock-box">
               <div class="time" id="clockTime">--:--:--</div>
               <div class="date" id="clockDate">-</div>
@@ -580,6 +579,12 @@ html,body{overflow-x:hidden;max-width:100%;}
             <div class="field"><label>Tarikh Deadline</label><input type="date" id="setDeadlineDate"></div>
           </div>
           <button class="btn-primary btn-sm" id="btnSimpanDeadline">Simpan</button>
+          <div id="deadlineArkibWrap" style="margin-top:16px;"></div>
+        </div>
+        <div class="card" style="max-width:560px;">
+          <h3 class="section-title">Sandaran Data</h3>
+          <p class="small-note">Muat turun salinan semua data (murid, rekod TP, markah peperiksaan, keputusan TP) sebagai fail JSON ke peranti Am. Simpan fail ini di tempat selamat sebagai sandaran.</p>
+          <button class="btn-primary btn-sm" id="btnMuatTurunSandaran" style="margin-top:8px;">⬇️ Muat Turun Sandaran</button>
         </div>
         <div class="card" style="max-width:560px;">
           <h3 class="section-title">Sambungan Google Sheets</h3>
@@ -870,7 +875,7 @@ const QUOTES = [
 const FALLBACK_EXEC_URL = "https://script.google.com/macros/s/AKfycbw5lTxFcS_M09waOXap1rOo3H4K0CBSh7ozvLqG7C2741Hpngy-aIhKQTz5oGP_epYlwA/exec";
 
 let state = {
-  settings:{ schoolName:"SK SERI GRISEK", schoolCode:"", apiUrl:FALLBACK_EXEC_URL, deadlineText:"", deadlineDate:"" },
+  settings:{ schoolName:"SK SERI GRISEK", schoolCode:"", apiUrl:FALLBACK_EXEC_URL, deadlineText:"", deadlineDate:"", deadlineMemos:[] },
   students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[], tpSemasaDecisions:[]
 };
 let session = { currentUser:null };
@@ -1104,7 +1109,12 @@ async function loadState(){
     if(r && r.value){
       const parsed = JSON.parse(r.value);
       state = Object.assign(state, parsed);
-      state.settings = Object.assign({apiUrl:FALLBACK_EXEC_URL,schoolCode:"",deadlineText:"",deadlineDate:""}, state.settings);
+      state.settings = Object.assign({apiUrl:FALLBACK_EXEC_URL,schoolCode:"",deadlineText:"",deadlineDate:"",deadlineMemos:[]}, state.settings);
+      if(!state.settings.deadlineMemos) state.settings.deadlineMemos = [];
+      // Migrasi memo lama (satu teks sahaja) ke senarai memo, sekali sahaja
+      if(!state.settings.deadlineMemos.length && state.settings.deadlineText){
+        state.settings.deadlineMemos.push({ id: uid("m"), text: state.settings.deadlineText, date: state.settings.deadlineDate||"", tarikhSimpan: todayStr() });
+      }
       if(!state.settings.currentClass) state.settings.currentClass = CLASSES[0];
       if(!state.users || !state.users.length) seedDefaultData();
     } else {
@@ -1143,6 +1153,7 @@ async function syncFromServer(){
         if(server.settings.schoolCode) state.settings.schoolCode = server.settings.schoolCode;
         if(server.settings.deadlineText) state.settings.deadlineText = server.settings.deadlineText;
         if(server.settings.deadlineDate) state.settings.deadlineDate = server.settings.deadlineDate;
+        if(server.settings.deadlineMemos){ try{ state.settings.deadlineMemos = JSON.parse(server.settings.deadlineMemos); }catch(e){} }
         if(server.settings.customTajuk){ try{ state.customTajuk = JSON.parse(server.settings.customTajuk); }catch(e){} }
         if(server.settings.tajukKriteria){ try{ state.tajukKriteria = JSON.parse(server.settings.tajukKriteria); }catch(e){} }
       }
@@ -1281,10 +1292,11 @@ function renderDashboard(){
   tabsEl.innerHTML = YEARS.map(y=>`<button data-year="${y}" class="${tabsEl.dataset.year===y?'active':''}">Tahun ${y}</button>`).join("");
   renderDashClassProgress(tabsEl.dataset.year);
 
-  const daysLeft = state.settings.deadlineDate ? Math.ceil((new Date(state.settings.deadlineDate) - new Date())/86400000) : null;
+  const activeMemo = (state.settings.deadlineMemos && state.settings.deadlineMemos[0]) || null;
+  const daysLeft = activeMemo && activeMemo.date ? Math.ceil((new Date(activeMemo.date) - new Date())/86400000) : null;
   let alertsHtml = "";
-  if(state.settings.deadlineText){
-    alertsHtml += `<div class="alert-box"><div class="a-icon">⚠️</div><div><b>${state.settings.deadlineText}</b><div class="a-sub">${daysLeft!==null ? (daysLeft>=0? daysLeft+" hari lagi" : "Tarikh sudah lepas") : ""}</div></div></div>`;
+  if(activeMemo){
+    alertsHtml += `<div class="alert-box"><div class="a-icon">⚠️</div><div><b>${activeMemo.text}</b><div class="a-sub">${daysLeft!==null ? (daysLeft>=0? daysLeft+" hari lagi" : "Tarikh sudah lepas") : ""}</div></div></div>`;
   }
   alertsHtml += `<div class="alert-box"><div class="a-icon">📋</div><div><b>${belumMula} murid masih belum ada rekod TP</b><div class="a-sub">Lihat Senarai Murid untuk perincian</div></div></div>`;
   const weekAgo = Date.now() - 7*86400000;
@@ -1431,8 +1443,13 @@ function renderRekodTable(){
       <td>${tpAkhirCell}</td>
       <td>${recorded}${withEvidence?` <span class="small-note">(📎${withEvidence})</span>`:""}</td>
       <td>
-        <div class="cp-bar" style="width:120px;"><div class="cp-bar-fill" style="width:${pct}%;"></div></div>
-        <div style="font-size:11px;margin-top:3px;">${pct}% · ✅${recorded} direkod · 🔴${notDone} belum</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="ring" style="--pct:${pct};width:44px;height:44px;font-size:11px;"><div class="ring-inner" style="width:34px;height:34px;font-size:10.5px;">${pct}%</div></div>
+          <div style="font-size:11px;line-height:1.4;">
+            <div>✅ ${recorded} direkod</div>
+            <div>🔴 ${notDone} belum</div>
+          </div>
+        </div>
       </td>
       <td>${sahCell}</td>
       <td><button class="btn-outline btn-sm" data-lihat-murid="${s.id}">Lihat</button></td>
@@ -1832,11 +1849,31 @@ function renderGuruView(){
 function renderSelenggaraView(){
   document.getElementById("setSchoolName").value = state.settings.schoolName || "";
   document.getElementById("setSchoolCode").value = state.settings.schoolCode || "";
-  document.getElementById("setDeadlineText").value = state.settings.deadlineText || "";
-  document.getElementById("setDeadlineDate").value = state.settings.deadlineDate || "";
+  document.getElementById("setDeadlineText").value = "";
+  document.getElementById("setDeadlineDate").value = "";
   document.getElementById("apiUrlInput").value = state.settings.apiUrl || "";
   document.getElementById("serverVersionLabel").textContent = "Versi Code.gs di server: " + (state.serverAppVersion || "belum dikesan (klik Sambung & Muat Data)");
   updateConnStatus();
+
+  const memos = state.settings.deadlineMemos || [];
+  const arkibWrap = document.getElementById("deadlineArkibWrap");
+  if(!memos.length){
+    arkibWrap.innerHTML = `<p class="small-note">Belum ada memo disimpan.</p>`;
+  } else {
+    arkibWrap.innerHTML = `
+      <div class="small-note" style="font-weight:800;margin-bottom:8px;">Arkib Peringatan (${memos.length})</div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow:auto;">
+        ${memos.map((m,idx)=>`
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 12px;background:${idx===0?'#fef9ec':'#f8f9fb'};border:1px solid var(--border);border-radius:8px;">
+            <div>
+              <b style="font-size:13px;">${m.text}</b>
+              <div class="small-note" style="margin-top:2px;">${m.date?"Tarikh deadline: "+fmtDate(m.date):"Tiada tarikh"} ${idx===0?"· <b>Aktif di Dashboard</b>":""}</div>
+            </div>
+            <button class="icon-btn" data-del-memo="${m.id}" title="Padam">🗑️</button>
+          </div>
+        `).join("")}
+      </div>`;
+  }
 }
 
 /* ================= CLOCK ================= */
@@ -2299,7 +2336,6 @@ document.addEventListener("click", async (e)=>{
   if(t.id==="printUasaAll") printExamAll("UASA");
   if(t.id==="printIndividu") printRecordsIndividu();
   if(t.id==="printAll") printRecordsAll();
-  if(t.id==="btnEksportPdf"){ window.print(); }
 
   // guru (admin) crud
   if(t.dataset.editGuru){
@@ -2358,10 +2394,39 @@ document.addEventListener("click", async (e)=>{
     showToast("Maklumat sekolah disimpan."); renderDashboard();
   }
   if(t.id==="btnSimpanDeadline"){
-    state.settings.deadlineText = document.getElementById("setDeadlineText").value.trim();
-    state.settings.deadlineDate = document.getElementById("setDeadlineDate").value;
-    await saveState(); apiPost("updateSettings",{deadlineText:state.settings.deadlineText,deadlineDate:state.settings.deadlineDate});
-    showToast("Peringatan disimpan."); renderDashboard();
+    const txt = document.getElementById("setDeadlineText").value.trim();
+    const dt = document.getElementById("setDeadlineDate").value;
+    if(!txt){ showToast("Sila isi teks peringatan."); return; }
+    if(!state.settings.deadlineMemos) state.settings.deadlineMemos = [];
+    state.settings.deadlineMemos.unshift({ id: uid("m"), text: txt, date: dt, tarikhSimpan: todayStr() });
+    await saveState();
+    apiPost("updateSettings",{deadlineMemos: JSON.stringify(state.settings.deadlineMemos)});
+    showToast("Peringatan disimpan."); renderDashboard(); renderSelenggaraView();
+  }
+  if(t.dataset.delMemo){
+    const id = t.dataset.delMemo;
+    state.settings.deadlineMemos = (state.settings.deadlineMemos||[]).filter(m=>m.id!==id);
+    await saveState();
+    apiPost("updateSettings",{deadlineMemos: JSON.stringify(state.settings.deadlineMemos)});
+    showToast("Memo dipadam."); renderDashboard(); renderSelenggaraView();
+  }
+  if(t.id==="btnMuatTurunSandaran"){
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      appVersion: state.serverAppVersion || "?",
+      students: state.students, records: state.records, examMarks: state.examMarks,
+      users: state.users, customTajuk: state.customTajuk, tajukKriteria: state.tajukKriteria,
+      bidangDecisions: state.bidangDecisions, tpAkhirDecisions: state.tpAkhirDecisions,
+      tpSemasaDecisions: state.tpSemasaDecisions, settings: state.settings
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const tarikh = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = `sandaran-pbd-${tarikh}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Sandaran dimuat turun.");
   }
   if(t.id==="btnSambung"){
     const url=document.getElementById("apiUrlInput").value.trim();
@@ -2378,6 +2443,7 @@ document.addEventListener("click", async (e)=>{
       if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName=server.settings.schoolName;
+        if(server.settings.deadlineMemos){ try{ state.settings.deadlineMemos=JSON.parse(server.settings.deadlineMemos); }catch(e){} }
         if(server.settings.customTajuk){ try{ state.customTajuk=JSON.parse(server.settings.customTajuk); }catch(e){} }
         if(server.settings.tajukKriteria){ try{ state.tajukKriteria=JSON.parse(server.settings.tajukKriteria); }catch(e){} }
       }
