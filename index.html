@@ -56,7 +56,7 @@ input,select{font-family:inherit;}
 .nav-item:hover{background:var(--navy-light);}
 .nav-item.active{background:var(--gold);color:var(--navy-dark);}
 .nav-item .emoji{font-size:16px;width:20px;text-align:center;}
-.sidebar-quote{margin-top:auto;background:var(--navy-light);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;font-size:11px;color:#c7cee6;}
+.sidebar-quote{margin-top:18px;background:var(--navy-light);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;font-size:11px;color:#c7cee6;}
 .sidebar-quote .qtitle{font-size:9px;letter-spacing:.5px;color:#8f9bc2;font-weight:800;margin-bottom:5px;}
 .sidebar-quote .qheading{color:var(--gold-light);font-weight:800;font-size:12.5px;line-height:1.25;margin-bottom:6px;}
 .sidebar-quote .qtext{color:#f2f4f9;font-weight:500;font-style:italic;font-size:11px;line-height:1.4;margin-bottom:8px;}
@@ -241,34 +241,55 @@ html,body{overflow-x:hidden;max-width:100%;}
 #sidebarOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:150;}
 #sidebarOverlay.show{display:block;}
 
-@media (max-width:900px){
+/* ===== Tablet & Mobile: sidebar jadi menu tersorok mula 1024px (liputi iPad potret & lanskap) ===== */
+@media (max-width:1024px){
   .btn-menu-toggle{display:inline-flex;}
   .sidebar{position:fixed;left:-280px;top:0;z-index:200;transition:.25s;height:100vh;}
   .sidebar.open{left:0;}
   .main-area{width:100%;}
-  .topbar{padding:10px 14px;}
-  .content{padding:16px 14px;}
+  .topbar{padding:12px 18px;}
+  .content{padding:18px 20px;}
   .banner{padding:16px 18px;flex-direction:column;align-items:flex-start;gap:10px;}
   .banner-right{width:100%;justify-content:space-between;}
   .clock-box{border-left:none;padding-left:0;text-align:left;}
-  .stat-grid{grid-template-columns:repeat(2,1fr);gap:10px;}
+  .stat-grid{grid-template-columns:repeat(3,1fr);gap:12px;}
   .stat-card{padding:12px 14px;}
   .stat-num{font-size:19px;}
   .two-col{grid-template-columns:1fr;}
   .student-list-box{grid-template-columns:1fr;}
   .form-row{gap:12px;}
-  .grid-btns{grid-template-columns:repeat(2,minmax(0,1fr));}
-  .modal-box{padding:18px;max-width:100%!important;}
+  .grid-btns{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .modal-box{padding:18px;max-width:92%!important;}
   h2.page-title{font-size:19px;}
   .toolbar-row{flex-direction:column;align-items:stretch;}
   .toolbar-row > *{width:100%;}
-  table{font-size:12.5px;}
-  th,td{padding:8px 8px;}
+  table{font-size:13px;}
+  th,td{padding:10px 8px;}
+  /* Sasaran sentuh lebih besar untuk iPad/tablet */
+  .nav-item{padding:13px 12px;font-size:14.5px;}
+  .tp-btn{padding:11px 18px;min-height:42px;}
+  .icon-btn{padding:8px;font-size:17px;min-width:38px;min-height:38px;}
+  .btn-primary,.btn-outline,.btn-sm{min-height:40px;}
+}
+@media (max-width:700px){
+  .stat-grid{grid-template-columns:repeat(2,1fr);}
+  .grid-btns{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 @media (max-width:480px){
   .stat-grid{grid-template-columns:1fr 1fr;}
   .login-card{padding:30px 22px;}
   .sidebar{width:240px;}
+  .content{padding:14px 12px;}
+  table{font-size:12px;}
+  th,td{padding:8px 6px;}
+}
+/* Peranti sentuh (tablet/telefon walau apa saiz skrin): elak zoom auto iOS & besarkan sasaran jari */
+@media (pointer:coarse){
+  .field select,.field input[type=date],.field input[type=number],.field input[type=text],.field input[type=password]{
+    font-size:16px;padding:11px 12px;
+  }
+  .tp-btn{min-height:42px;}
+  .icon-btn{min-width:38px;min-height:38px;}
 }
 </style>
 </head>
