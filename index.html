@@ -449,7 +449,7 @@ html,body{overflow-x:hidden;max-width:100%;}
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Rekod</button>
             <button class="btn-outline admin-only-nav" id="btnResetSahkanSemua" style="display:none;">↩️ Reset Rekod</button>
-            <button class="btn-outline admin-only-nav" id="btnResetSemuaTpData" style="display:none;color:#b91c1c;border-color:#fecaca;">🗑️ Reset Semua Data TP (Kelas Ditapis)</button>
+            <button class="btn-outline admin-only-nav" id="btnResetSemuaTpData" style="display:none;color:#b91c1c;border-color:#fecaca;">🗑️ Reset Semua Data TP</button>
             <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
           </div>
         </div>
@@ -1490,7 +1490,7 @@ function renderRekodTable(){
     const pct = maxSlot ? Math.round(recorded/maxSlot*100) : 0;
     const latestTp = recs.length ? recs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp : null;
     const sahCell = s.verified
-      ? `✅ Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">↩️</button>`:""}`
+      ? `🔒 Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">🔓</button>`:""}`
       : (isAdmin ? `<button class="btn-outline btn-sm" data-verify-murid="${s.id}">Sahkan</button>` : "⏳ Belum Disahkan");
     return `<tr>
       <td><div class="acc-row"><div class="avatar-circle">${initials(s.nama)}</div><b>${s.nama}</b></div></td>
@@ -1564,7 +1564,7 @@ function renderTpView(){
       </div>
     </div>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn-primary btn-sm" data-sahkan-tp-semasa="1" data-cadangan-tp="${semasa.cadanganTp}">✓ Sahkan TP${semasa.cadanganTp}</button>
+      <button class="btn-primary btn-sm" data-sahkan-tp-semasa="1" data-cadangan-tp="${semasa.cadanganTp}" ${isSemasaFinal?'disabled style="opacity:.5;cursor:not-allowed;background:#9aa5b8;border-color:#9aa5b8;"':''}>${isSemasaFinal?'🔒 Telah Disahkan':`✓ Sahkan TP${semasa.cadanganTp}`}</button>
       <button class="btn-outline btn-sm" data-ubah-tp-semasa="1">✎ Pilih TP Lain</button>
     </div>
     <div id="ubahTpSemasaPanel" style="display:none;margin-top:10px;padding:14px;background:#f8f9fb;border-radius:10px;border:1px solid var(--border);">
@@ -1590,7 +1590,7 @@ function renderTpView(){
           : `<span class="badge" style="background:#fef3c7;color:#92400e;">Cadangan Sistem — Pertimbangan Guru Diperlukan</span>`}
       </div>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <button class="btn-outline btn-sm" data-sahkan-bidang="${b.key}" data-cadangan-tp="${b.cadanganTp}">✓ Sahkan TP${b.cadanganTp}</button>
+        <button class="btn-outline btn-sm" data-sahkan-bidang="${b.key}" data-cadangan-tp="${b.cadanganTp}" ${decided?'disabled style="opacity:.5;cursor:not-allowed;"':''}>${decided?'🔒 Telah Disahkan':`✓ Sahkan TP${b.cadanganTp}`}</button>
         <select data-ubah-bidang-select="${b.key}" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;">
           ${TP_LIST.map(tp=>`<option value="${tp.replace('TP','')}" ${b.decision&&String(b.decision.tpBidang)===tp.replace('TP','')?'selected':''}>${tp}</option>`).join("")}
         </select>
@@ -1639,7 +1639,7 @@ function renderTpView(){
       </div>
     </div>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn-primary btn-sm" data-sahkan-tp-akhir="1" data-cadangan-tp="${cad.cadanganTp}">✓ Sahkan TP${cad.cadanganTp}</button>
+      <button class="btn-primary btn-sm" data-sahkan-tp-akhir="1" data-cadangan-tp="${cad.cadanganTp}" ${isFinal?'disabled style="opacity:.5;cursor:not-allowed;background:#9aa5b8;border-color:#9aa5b8;"':''}>${isFinal?'🔒 Telah Disahkan':`✓ Sahkan TP${cad.cadanganTp}`}</button>
       <button class="btn-outline btn-sm" data-ubah-tp-akhir="1">✎ Pilih TP Lain</button>
     </div>
     <div id="ubahTpAkhirPanel" style="display:none;margin-top:10px;padding:14px;background:#f8f9fb;border-radius:10px;border:1px solid var(--border);">
@@ -2172,6 +2172,9 @@ document.addEventListener("click", async (e)=>{
     if(!recCount){ showToast("Tiada rekod TP untuk murid dalam tapisan ini."); return; }
     if(!(await customConfirm(`⚠️ AMARAN: Ini akan PADAM ${recCount} rekod TP & SEMUA keputusan TP (Semasa/Bidang/Akhir) untuk ${studs.length} murid dalam kelas ${rekodFilter.kelas}. Tindakan ini TIDAK BOLEH DIBATALKAN. Teruskan?`))) return;
     if(!(await customConfirm(`Sahkan sekali lagi: PADAM SEMUA data TP untuk ${studs.length} murid (${rekodFilter.kelas})?`))) return;
+    const pwd = await customPrompt("Masukkan kata laluan pengesahan untuk teruskan Reset:", "");
+    if(pwd===null){ showToast("Reset dibatalkan."); return; }
+    if(pwd !== "1234"){ showToast("❌ Kata laluan salah. Reset dibatalkan."); return; }
     const origTxt = t.textContent;
     t.disabled=true; t.textContent="⏳ Memadam...";
     try{
@@ -2211,7 +2214,7 @@ document.addEventListener("click", async (e)=>{
       renderRekodTable();
       t.textContent = origTxt; t.disabled=false;
     }
-    showToast(fail>0 ? `✅ ${ok} disahkan, ⚠️ ${fail} gagal (cuba lagi).` : `✅ ${ok} murid disahkan.`);
+    showToast(fail>0 ? `🔒 ${ok} disahkan, ⚠️ ${fail} gagal (cuba lagi).` : `🔒 ${ok} murid disahkan.`);
   }
   if(t.id==="btnResetSahkanSemua"){
     if(t.disabled) return;
@@ -2237,7 +2240,7 @@ document.addEventListener("click", async (e)=>{
       renderRekodTable();
       t.textContent = origTxt; t.disabled=false;
     }
-    showToast(fail>0 ? `↩️ ${ok} direset, ⚠️ ${fail} gagal (cuba lagi).` : `↩️ ${ok} murid direset (batal sahkan).`);
+    showToast(fail>0 ? `🔓 ${ok} direset, ⚠️ ${fail} gagal (cuba lagi).` : `🔓 ${ok} murid direset (batal sahkan).`);
   }
   if(t.dataset.sahkanBidang){
     const bidangKey = t.dataset.sahkanBidang;
