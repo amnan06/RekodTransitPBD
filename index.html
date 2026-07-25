@@ -447,8 +447,8 @@ html,body{overflow-x:hidden;max-width:100%;}
         <div class="toolbar-row">
           <button class="btn-gold" id="btnUploadPukal">📤 Upload Pukal</button>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Semua TP</button>
-            <button class="btn-outline admin-only-nav" id="btnResetSahkanSemua" style="display:none;">↩️ Reset Sahkan Semua TP</button>
+            <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Kelengkapan Rekod</button>
+            <button class="btn-outline admin-only-nav" id="btnResetSahkanSemua" style="display:none;">↩️ Reset Kelengkapan Rekod</button>
             <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
           </div>
         </div>
@@ -2163,12 +2163,21 @@ document.addEventListener("click", async (e)=>{
     if(!toVerify.length){ showToast("Semua murid (ditapis) sudah disahkan."); return; }
     if(!(await customConfirm(`Sahkan ${toVerify.length} murid sekali gus?`))) return;
     const origTxt = t.textContent;
-    t.disabled=true; t.textContent="⏳ Menyahkan...";
-    for(const s of toVerify){ s.verified = true; await apiPost("updateStudent", s); }
-    await saveState();
-    renderRekodTable();
-    t.textContent = origTxt; t.disabled=false;
-    showToast(`✅ ${toVerify.length} murid disahkan.`);
+    t.disabled=true;
+    let ok=0, fail=0;
+    try{
+      for(const s of toVerify){
+        t.textContent = `⏳ Menyahkan... (${ok+fail+1}/${toVerify.length})`;
+        s.verified = true;
+        try{ await apiPost("updateStudent", s); ok++; }
+        catch(e){ fail++; }
+      }
+      await saveState();
+    } finally {
+      renderRekodTable();
+      t.textContent = origTxt; t.disabled=false;
+    }
+    showToast(fail>0 ? `✅ ${ok} disahkan, ⚠️ ${fail} gagal (cuba lagi).` : `✅ ${ok} murid disahkan.`);
   }
   if(t.id==="btnResetSahkanSemua"){
     if(t.disabled) return;
@@ -2180,12 +2189,21 @@ document.addEventListener("click", async (e)=>{
     if(!toReset.length){ showToast("Tiada murid (ditapis) yang disahkan buat masa ini."); return; }
     if(!(await customConfirm(`Batalkan status Disahkan untuk ${toReset.length} murid sekali gus?`))) return;
     const origTxt = t.textContent;
-    t.disabled=true; t.textContent="⏳ Reset...";
-    for(const s of toReset){ s.verified = false; await apiPost("updateStudent", s); }
-    await saveState();
-    renderRekodTable();
-    t.textContent = origTxt; t.disabled=false;
-    showToast(`↩️ ${toReset.length} murid direset (batal sahkan).`);
+    t.disabled=true;
+    let ok=0, fail=0;
+    try{
+      for(const s of toReset){
+        t.textContent = `⏳ Reset... (${ok+fail+1}/${toReset.length})`;
+        s.verified = false;
+        try{ await apiPost("updateStudent", s); ok++; }
+        catch(e){ fail++; }
+      }
+      await saveState();
+    } finally {
+      renderRekodTable();
+      t.textContent = origTxt; t.disabled=false;
+    }
+    showToast(fail>0 ? `↩️ ${ok} direset, ⚠️ ${fail} gagal (cuba lagi).` : `↩️ ${ok} murid direset (batal sahkan).`);
   }
   if(t.dataset.sahkanBidang){
     const bidangKey = t.dataset.sahkanBidang;
