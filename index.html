@@ -1953,6 +1953,7 @@ document.addEventListener("click", async (e)=>{
   if(t.dataset.tpPilihMurid){
     tpViewStudentId = t.dataset.tpPilihMurid;
     renderTpView();
+    document.getElementById("tpViewContent")?.scrollIntoView({behavior:"smooth", block:"start"});
   }
   const navBtn = t.closest(".nav-item");
   if(navBtn && navBtn.dataset.view){
