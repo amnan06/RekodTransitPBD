@@ -56,6 +56,8 @@ input,select{font-family:inherit;}
 .nav-item:hover{background:var(--navy-light);}
 .nav-item.active{background:var(--gold);color:var(--navy-dark);}
 .nav-item .emoji{font-size:16px;width:20px;text-align:center;}
+.nav-badge{margin-left:auto;background:#dc2626;color:#fff;font-size:10.5px;font-weight:800;border-radius:20px;padding:2px 7px;min-width:18px;text-align:center;line-height:1.4;}
+.nav-item.active .nav-badge{background:#fff;color:#dc2626;}
 .sidebar-quote{margin-top:18px;background:var(--navy-light);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;font-size:11px;color:#c7cee6;}
 .sidebar-quote .qtitle{font-size:9px;letter-spacing:.5px;color:#8f9bc2;font-weight:800;margin-bottom:5px;}
 .sidebar-quote .qheading{color:var(--gold-light);font-weight:800;font-size:12.5px;line-height:1.25;margin-bottom:6px;}
@@ -333,7 +335,7 @@ html,body{overflow-x:hidden;max-width:100%;}
     <button class="nav-item" data-view="murid"><span class="emoji">🎓</span> Murid</button>
     <button class="nav-item" data-view="rekod"><span class="emoji">📝</span> Rekod</button>
     <button class="nav-item" data-view="tajuk"><span class="emoji">📚</span> Tajuk</button>
-    <button class="nav-item" data-view="tp"><span class="emoji">🎯</span> Tahap Penguasaan (TP)</button>
+    <button class="nav-item" data-view="tp"><span class="emoji">🎯</span> Tahap Penguasaan (TP)<span id="tpNavBadge" class="nav-badge admin-only-nav" style="display:none;"></span></button>
     <button class="nav-item" data-view="exam"><span class="emoji">🖊️</span> UPSA &amp; UASA</button>
 
     <div class="nav-section-label">Laporan</div>
@@ -430,8 +432,8 @@ html,body{overflow-x:hidden;max-width:100%;}
         <h2 class="page-title">Rekod TP &amp; Eviden</h2>
         <div class="toolbar-row">
           <button class="btn-gold" id="btnUploadPukal">📤 Upload Pukal</button>
-          <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
           <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Semua TP (Kelas Ditapis)</button>
+          <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
         </div>
         <div class="toolbar-row" style="gap:10px;">
           <select id="rekodFilterKelas" style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--border);font-weight:700;font-size:13.5px;"></select>
@@ -1267,6 +1269,19 @@ function totalTajukForYear(year){
   Object.keys(BIDANG).forEach(b=>{ total += getTajukList(year,b).all.length; });
   return total;
 }
+function getPendingTpCount(){
+  const withRecords = new Set(state.records.map(r=>r.studentId));
+  const confirmedIds = new Set((state.tpAkhirDecisions||[]).map(d=>d.studentId));
+  return state.students.filter(s=>!s.deleted && withRecords.has(s.id) && !confirmedIds.has(s.id)).length;
+}
+function updateAdminTpBadge(){
+  const badge = document.getElementById("tpNavBadge");
+  if(!badge) return;
+  if(!session.currentUser || session.currentUser.peranan!=="Admin"){ badge.style.display="none"; return; }
+  const n = getPendingTpCount();
+  if(n>0){ badge.textContent = n; badge.style.display="inline-block"; }
+  else { badge.style.display="none"; }
+}
 function renderDashboard(){
   const nama = session.currentUser ? session.currentUser.nama : "";
   document.getElementById("greetingText").textContent = "Assalamualaikum, Cikgu " + nama;
@@ -1294,6 +1309,16 @@ function renderDashboard(){
 
   const allMemos = state.settings.deadlineMemos || [];
   let alertsHtml = "";
+
+  // Notifikasi admin: murid yang ada rekod tapi TP Akhir belum disahkan lagi
+  if(session.currentUser && session.currentUser.peranan==="Admin"){
+    const pendingCount = getPendingTpCount();
+    if(pendingCount>0){
+      alertsHtml += `<div class="alert-box" style="background:#fef2f2;border-color:#fecaca;cursor:pointer;" data-goto-tp-inbox="1"><div class="a-icon">🔔</div><div><b>${pendingCount} murid menunggu pengesahan TP Akhir</b><div class="a-sub">Klik untuk semak di Tab Tahap Penguasaan (TP)</div></div></div>`;
+    }
+  }
+  updateAdminTpBadge();
+
   allMemos.forEach(m=>{
     const dLeft = m.date ? Math.ceil((new Date(m.date) - new Date())/86400000) : null;
     alertsHtml += `<div class="alert-box"><div class="a-icon">⚠️</div><div><b>${m.text}</b><div class="a-sub">${dLeft!==null ? (dLeft>=0? dLeft+" hari lagi" : "Tarikh sudah lepas") : ""}</div></div></div>`;
@@ -1902,6 +1927,9 @@ document.addEventListener("click", async (e)=>{
     t.classList.remove("show");
   }
 
+  if(t.closest("[data-goto-tp-inbox]")){
+    switchView("tp");
+  }
   const navBtn = t.closest(".nav-item");
   if(navBtn && navBtn.dataset.view){
     switchView(navBtn.dataset.view);
@@ -2173,6 +2201,7 @@ document.addEventListener("click", async (e)=>{
     await saveState(); await apiPost("saveTpAkhirDecision", dec);
     renderTpView();
     renderRekodTable();
+    updateAdminTpBadge();
     showToast(`TP Akhir disahkan: TP${cadanganTp}.`);
   }
   if(t.dataset.ubahTpAkhir){
@@ -2196,6 +2225,7 @@ document.addEventListener("click", async (e)=>{
     await saveState(); await apiPost("saveTpAkhirDecision", dec);
     renderTpView();
     renderRekodTable();
+    updateAdminTpBadge();
     showToast(`TP Akhir ditetapkan: TP${chosenTp}.`);
   }
   if(t.dataset.verifyMurid){
