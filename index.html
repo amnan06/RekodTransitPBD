@@ -447,8 +447,9 @@ html,body{overflow-x:hidden;max-width:100%;}
         <div class="toolbar-row">
           <button class="btn-gold" id="btnUploadPukal">📤 Upload Pukal</button>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Kelengkapan Rekod</button>
-            <button class="btn-outline admin-only-nav" id="btnResetSahkanSemua" style="display:none;">↩️ Reset Kelengkapan Rekod</button>
+            <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Rekod</button>
+            <button class="btn-outline admin-only-nav" id="btnResetSahkanSemua" style="display:none;">↩️ Reset Rekod</button>
+            <button class="btn-outline admin-only-nav" id="btnResetSemuaTpData" style="display:none;color:#b91c1c;border-color:#fecaca;">🗑️ Reset Semua Data TP (Kelas Ditapis)</button>
             <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
           </div>
         </div>
@@ -1290,9 +1291,15 @@ function totalTajukForYear(year){
   return total;
 }
 function getPendingTpCount(){
-  const withRecords = new Set(state.records.map(r=>r.studentId));
   const confirmedIds = new Set((state.tpAkhirDecisions||[]).map(d=>d.studentId));
-  return state.students.filter(s=>!s.deleted && withRecords.has(s.id) && !confirmedIds.has(s.id)).length;
+  return state.students.filter(s=>{
+    if(s.deleted || confirmedIds.has(s.id)) return false;
+    const year = getYearFromClass(s.kelas);
+    const totalNeeded = totalTajukForYear(year);
+    if(!totalNeeded) return false;
+    const doneTopics = new Set(state.records.filter(r=>r.studentId===s.id).map(r=>r.bidang+"|"+r.tajuk));
+    return doneTopics.size >= totalNeeded;
+  }).length;
 }
 function updateAdminTpBadge(){
   const badge = document.getElementById("tpNavBadge");
@@ -1347,7 +1354,7 @@ function renderDashboard(){
   if(session.currentUser && session.currentUser.peranan==="Admin"){
     const pendingCount = getPendingTpCount();
     if(pendingCount>0){
-      alertsHtml += `<div class="alert-box" style="background:#fef2f2;border-color:#fecaca;cursor:pointer;" data-goto-tp-inbox="1"><div class="a-icon">🔔</div><div><b>${pendingCount} murid menunggu pengesahan TP Akhir</b><div class="a-sub">Klik untuk semak di Tab Tahap Penguasaan</div></div></div>`;
+      alertsHtml += `<div class="alert-box" style="background:#fef2f2;border-color:#fecaca;cursor:pointer;" data-goto-tp-inbox="1"><div class="a-icon">🔔</div><div><b>${pendingCount} murid dah lengkap semua tajuk, menunggu pengesahan TP Akhir</b><div class="a-sub">Klik untuk semak di Tab Tahap Penguasaan</div></div></div>`;
     }
   }
   updateAdminTpBadge();
@@ -1469,6 +1476,7 @@ function renderRekodTable(){
   const isAdmin = session.currentUser && session.currentUser.peranan==="Admin";
   document.getElementById("btnSahkanSemua").style.display = isAdmin ? "" : "none";
   document.getElementById("btnResetSahkanSemua").style.display = isAdmin ? "" : "none";
+  document.getElementById("btnResetSemuaTpData").style.display = isAdmin ? "" : "none";
   const tbody = document.getElementById("rekodTbody");
   if(!studs.length){ tbody.innerHTML = `<tr><td colspan="7" class="empty-row">Tiada murid dijumpai.</td></tr>`; return; }
   tbody.innerHTML = studs.map(s=>{
@@ -2152,6 +2160,32 @@ document.addEventListener("click", async (e)=>{
     closeModal("tambahModal"); renderMuridView(); renderStep3(); renderDashboard();
     showToast("Murid ditambah.");
     t.disabled=false;
+  }
+  if(t.id==="btnResetSemuaTpData"){
+    if(t.disabled) return;
+    if(rekodFilter.kelas==="ALL"){ showToast("Sila pilih SATU kelas dulu (bukan Semua Kelas) untuk reset ini, demi keselamatan data."); return; }
+    let studs = state.students.filter(s=>!s.deleted && s.kelas===rekodFilter.kelas);
+    if(rekodFilter.search) studs = studs.filter(s=>s.nama.toLowerCase().includes(rekodFilter.search.toLowerCase()));
+    if(!studs.length){ showToast("Tiada murid dalam tapisan ini."); return; }
+    const ids = studs.map(s=>s.id);
+    const recCount = state.records.filter(r=>ids.includes(r.studentId)).length;
+    if(!recCount){ showToast("Tiada rekod TP untuk murid dalam tapisan ini."); return; }
+    if(!(await customConfirm(`⚠️ AMARAN: Ini akan PADAM ${recCount} rekod TP & SEMUA keputusan TP (Semasa/Bidang/Akhir) untuk ${studs.length} murid dalam kelas ${rekodFilter.kelas}. Tindakan ini TIDAK BOLEH DIBATALKAN. Teruskan?`))) return;
+    if(!(await customConfirm(`Sahkan sekali lagi: PADAM SEMUA data TP untuk ${studs.length} murid (${rekodFilter.kelas})?`))) return;
+    const origTxt = t.textContent;
+    t.disabled=true; t.textContent="⏳ Memadam...";
+    try{
+      state.records = state.records.filter(r=>!ids.includes(r.studentId));
+      state.bidangDecisions = (state.bidangDecisions||[]).filter(d=>!ids.includes(d.studentId));
+      state.tpAkhirDecisions = (state.tpAkhirDecisions||[]).filter(d=>!ids.includes(d.studentId));
+      state.tpSemasaDecisions = (state.tpSemasaDecisions||[]).filter(d=>!ids.includes(d.studentId));
+      await saveState();
+      await apiPost("resetTpData", { studentIds: ids });
+    } catch(e){}
+    renderRekodTable();
+    updateAdminTpBadge();
+    t.disabled=false; t.textContent=origTxt;
+    showToast(`🗑️ Data TP untuk ${studs.length} murid (${rekodFilter.kelas}) direset.`);
   }
   if(t.id==="btnSahkanSemua"){
     if(t.disabled) return;
