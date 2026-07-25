@@ -441,7 +441,8 @@ html,body{overflow-x:hidden;max-width:100%;}
         <div class="toolbar-row">
           <button class="btn-gold" id="btnUploadPukal">📤 Upload Pukal</button>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Semua TP (Kelas Ditapis)</button>
+            <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Semua TP</button>
+            <button class="btn-outline admin-only-nav" id="btnResetSahkanSemua" style="display:none;">↩️ Reset Sahkan Semua TP</button>
             <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
           </div>
         </div>
@@ -1461,6 +1462,7 @@ function renderRekodTable(){
   if(rekodFilter.tp!=="ALL") studs = studs.filter(s=>state.records.some(r=>r.studentId===s.id && r.tp===rekodFilter.tp));
   const isAdmin = session.currentUser && session.currentUser.peranan==="Admin";
   document.getElementById("btnSahkanSemua").style.display = isAdmin ? "" : "none";
+  document.getElementById("btnResetSahkanSemua").style.display = isAdmin ? "" : "none";
   const tbody = document.getElementById("rekodTbody");
   if(!studs.length){ tbody.innerHTML = `<tr><td colspan="7" class="empty-row">Tiada murid dijumpai.</td></tr>`; return; }
   tbody.innerHTML = studs.map(s=>{
@@ -2161,6 +2163,23 @@ document.addEventListener("click", async (e)=>{
     renderRekodTable();
     t.textContent = origTxt; t.disabled=false;
     showToast(`✅ ${toVerify.length} murid disahkan.`);
+  }
+  if(t.id==="btnResetSahkanSemua"){
+    if(t.disabled) return;
+    let studs = state.students.filter(s=>!s.deleted);
+    if(rekodFilter.kelas!=="ALL") studs = studs.filter(s=>s.kelas===rekodFilter.kelas);
+    if(rekodFilter.search) studs = studs.filter(s=>s.nama.toLowerCase().includes(rekodFilter.search.toLowerCase()));
+    if(rekodFilter.tp!=="ALL") studs = studs.filter(s=>state.records.some(r=>r.studentId===s.id && r.tp===rekodFilter.tp));
+    const toReset = studs.filter(s=>s.verified);
+    if(!toReset.length){ showToast("Tiada murid (ditapis) yang disahkan buat masa ini."); return; }
+    if(!(await customConfirm(`Batalkan status Disahkan untuk ${toReset.length} murid sekali gus?`))) return;
+    const origTxt = t.textContent;
+    t.disabled=true; t.textContent="⏳ Reset...";
+    for(const s of toReset){ s.verified = false; await apiPost("updateStudent", s); }
+    await saveState();
+    renderRekodTable();
+    t.textContent = origTxt; t.disabled=false;
+    showToast(`↩️ ${toReset.length} murid direset (batal sahkan).`);
   }
   if(t.dataset.sahkanBidang){
     const bidangKey = t.dataset.sahkanBidang;
