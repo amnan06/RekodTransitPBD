@@ -562,6 +562,7 @@ html,body{overflow-x:hidden;max-width:100%;}
         </div>
         <div class="card" style="max-width:480px;">
           <h3 class="section-title">Cetak Rekod Individu</h3>
+          <div class="field" style="margin-bottom:16px;"><label>Pilih Kelas</label><select id="cetakIndividuKelasSelect"></select></div>
           <div class="field" style="margin-bottom:16px;"><label>Pilih Murid</label><select id="cetakMuridSelect"></select></div>
           <button class="btn-gold btn-full" id="printIndividu">Cetak Rekod Murid Ini</button>
         </div>
@@ -1914,8 +1915,14 @@ function printRecordsAll(){
 function renderCetakView(){
   const kelasSel = document.getElementById("cetakKelasSelect");
   kelasSel.innerHTML = CLASSES.map(c=>`<option value="${c}">${c.toUpperCase()}</option>`).join("");
+  const individuKelasSel = document.getElementById("cetakIndividuKelasSelect");
+  if(!individuKelasSel.dataset.built){
+    individuKelasSel.innerHTML = `<option value="ALL">Semua Kelas</option>` + CLASSES.map(c=>`<option value="${c}">${c.toUpperCase()}</option>`).join("");
+    individuKelasSel.dataset.built = "1";
+  }
   const muridSel = document.getElementById("cetakMuridSelect");
-  const activeStuds = sortByClassThenName(state.students.filter(s=>!s.deleted));
+  let activeStuds = sortByClassThenName(state.students.filter(s=>!s.deleted));
+  if(individuKelasSel.value && individuKelasSel.value!=="ALL") activeStuds = activeStuds.filter(s=>s.kelas===individuKelasSel.value);
   muridSel.innerHTML = activeStuds.map(s=>`<option value="${s.id}">${s.nama} (${s.kelas})</option>`).join("") || `<option value="">-- Tiada murid --</option>`;
 }
 
@@ -2584,6 +2591,7 @@ document.getElementById("rekodFilterKelas")?.addEventListener("change",(e)=>{ re
 document.getElementById("rekodFilterTp")?.addEventListener("change",(e)=>{ rekodFilter.tp=e.target.value; renderRekodTable(); });
 document.getElementById("rekodSearch")?.addEventListener("input",(e)=>{ rekodFilter.search=e.target.value; renderRekodTable(); });
 document.getElementById("tpViewKelasSelect")?.addEventListener("change",()=>{ tpViewStudentId=null; renderTpView(); });
+document.getElementById("cetakIndividuKelasSelect")?.addEventListener("change", renderCetakView);
 document.getElementById("lihatEvidence")?.addEventListener("change",(e)=>{
   const f=e.target.files[0]; if(!f) return;
   compressImage(f,dataUrl=>{ const img=document.getElementById("lihatEvidenceThumb"); img.src=dataUrl; img.style.display="inline-block"; });
