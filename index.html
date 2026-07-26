@@ -69,6 +69,8 @@ input,select{font-family:inherit;}
 .tp-murid-chip.active{background:var(--navy);border-color:var(--navy);color:#fff;}
 .tp-murid-chip .small-note{color:var(--muted);font-weight:600;}
 .tp-murid-chip.active .small-note{color:#c7cee6;}
+.tp-inbox-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:#fff;border:1px solid #fecaca;border-radius:8px;cursor:pointer;transition:.15s;}
+.tp-inbox-row:hover{background:#fff5f5;border-color:#f87171;}
 .sidebar-quote{margin-top:18px;background:var(--navy-light);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;font-size:11px;color:#c7cee6;}
 .sidebar-quote .qtitle{font-size:9px;letter-spacing:.5px;color:#8f9bc2;font-weight:800;margin-bottom:5px;}
 .sidebar-quote .qheading{color:var(--gold-light);font-weight:800;font-size:12.5px;line-height:1.25;margin-bottom:6px;}
@@ -489,6 +491,7 @@ html,body{overflow-x:hidden;max-width:100%;}
       <div class="view" data-view="tp">
         <div class="eyebrow">DASHBOARD GURU</div>
         <h2 class="page-title">Tahap Penguasaan</h2>
+        <div id="tpInboxTindakan"></div>
         <div class="card" style="margin-bottom:18px;">
           <div class="field" style="max-width:280px;margin-bottom:14px;"><label>Pilih Kelas</label><select id="tpViewKelasSelect"></select></div>
           <div class="table-wrap">
@@ -1290,16 +1293,19 @@ function totalTajukForYear(year){
   Object.keys(BIDANG).forEach(b=>{ total += getTajukList(year,b).all.length; });
   return total;
 }
-function getPendingTpCount(){
+function getPendingTpStudents(){
   const confirmedIds = new Set((state.tpAkhirDecisions||[]).map(d=>d.studentId));
-  return state.students.filter(s=>{
+  return sortByClassThenName(state.students.filter(s=>{
     if(s.deleted || confirmedIds.has(s.id)) return false;
     const year = getYearFromClass(s.kelas);
     const totalNeeded = totalTajukForYear(year);
     if(!totalNeeded) return false;
     const doneTopics = new Set(state.records.filter(r=>r.studentId===s.id).map(r=>r.bidang+"|"+r.tajuk));
     return doneTopics.size >= totalNeeded;
-  }).length;
+  }));
+}
+function getPendingTpCount(){
+  return getPendingTpStudents().length;
 }
 function updateAdminTpBadge(){
   const badge = document.getElementById("tpNavBadge");
@@ -1490,7 +1496,7 @@ function renderRekodTable(){
     const pct = maxSlot ? Math.round(recorded/maxSlot*100) : 0;
     const latestTp = recs.length ? recs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp : null;
     const sahCell = s.verified
-      ? `🔒 Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">🔓</button>`:""}`
+      ? `✅ Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">↩️</button>`:""}`
       : (isAdmin ? `<button class="btn-outline btn-sm" data-verify-murid="${s.id}">Sahkan</button>` : "⏳ Belum Disahkan");
     return `<tr>
       <td><div class="acc-row"><div class="avatar-circle">${initials(s.nama)}</div><b>${s.nama}</b></div></td>
@@ -1513,6 +1519,7 @@ function renderRekodTable(){
 }
 /* ================= TAHAP PENGUASAAN (TP) VIEW ================= */
 let tpViewStudentId = null;
+let tpInboxExpanded = false;
 function renderTpViewSelectors(){
   const kelasSel = document.getElementById("tpViewKelasSelect");
   if(!kelasSel.dataset.built){ kelasSel.innerHTML = `<option value="ALL">Semua Kelas</option>` + CLASSES.map(c=>`<option value="${c}">${c.toUpperCase()}</option>`).join(""); kelasSel.dataset.built="1"; }
@@ -1531,7 +1538,36 @@ function renderTpViewSelectors(){
     </tr>`;
   }).join("") : `<tr><td colspan="3" class="empty-row">Tiada murid dalam kelas ini.</td></tr>`;
 }
+function renderTpInboxTindakan(){
+  const wrap = document.getElementById("tpInboxTindakan");
+  if(!wrap) return;
+  const isAdmin = session.currentUser && session.currentUser.peranan==="Admin";
+  if(!isAdmin){ wrap.innerHTML = ""; return; }
+  const pending = getPendingTpStudents();
+  if(!pending.length){ wrap.innerHTML = ""; return; }
+  const listHtml = pending.map(s=>`
+    <div class="tp-inbox-row" data-inbox-pilih-murid="${s.id}">
+      <div class="acc-row"><div class="avatar-circle">${initials(s.nama)}</div><b>${s.nama}</b></div>
+      <span class="small-note">${s.kelas}</span>
+      <span class="btn-outline btn-sm">Semak &amp; Sahkan →</span>
+    </div>`).join("");
+  wrap.innerHTML = `
+    <div class="card" style="margin-bottom:18px;border:1.5px solid #fecaca;background:#fef2f2;">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" data-toggle-tp-inbox="1">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:22px;">📥</span>
+          <div>
+            <b style="font-size:15px;">Inbox Tindakan — Sahkan TP Akhir</b>
+            <div class="small-note">${pending.length} murid dah lengkap semua tajuk, menunggu pengesahan</div>
+          </div>
+        </div>
+        <span style="font-size:16px;">${tpInboxExpanded?"▲":"▼"}</span>
+      </div>
+      ${tpInboxExpanded ? `<div style="margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto;">${listHtml}</div>` : ""}
+    </div>`;
+}
 function renderTpView(){
+  renderTpInboxTindakan();
   renderTpViewSelectors();
   const box = document.getElementById("tpViewContent");
   const studentId = tpViewStudentId;
@@ -1971,6 +2007,21 @@ document.addEventListener("click", async (e)=>{
     renderTpView();
     document.getElementById("tpViewContent")?.scrollIntoView({behavior:"smooth", block:"start"});
   }
+  if(t.closest("[data-toggle-tp-inbox]")){
+    tpInboxExpanded = !tpInboxExpanded;
+    renderTpInboxTindakan();
+  }
+  if(t.closest("[data-inbox-pilih-murid]")){
+    const id = t.closest("[data-inbox-pilih-murid]").dataset.inboxPilihMurid;
+    const s = studentById(id);
+    if(s){
+      const kelasSel = document.getElementById("tpViewKelasSelect");
+      if(kelasSel) kelasSel.value = s.kelas;
+      tpViewStudentId = id;
+      renderTpView();
+      document.getElementById("tpViewContent")?.scrollIntoView({behavior:"smooth", block:"start"});
+    }
+  }
   const navBtn = t.closest(".nav-item");
   if(navBtn && navBtn.dataset.view){
     switchView(navBtn.dataset.view);
@@ -2214,7 +2265,7 @@ document.addEventListener("click", async (e)=>{
       renderRekodTable();
       t.textContent = origTxt; t.disabled=false;
     }
-    showToast(fail>0 ? `🔒 ${ok} disahkan, ⚠️ ${fail} gagal (cuba lagi).` : `🔒 ${ok} murid disahkan.`);
+    showToast(fail>0 ? `✅ ${ok} disahkan, ⚠️ ${fail} gagal (cuba lagi).` : `✅ ${ok} murid disahkan.`);
   }
   if(t.id==="btnResetSahkanSemua"){
     if(t.disabled) return;
@@ -2240,7 +2291,7 @@ document.addEventListener("click", async (e)=>{
       renderRekodTable();
       t.textContent = origTxt; t.disabled=false;
     }
-    showToast(fail>0 ? `🔓 ${ok} direset, ⚠️ ${fail} gagal (cuba lagi).` : `🔓 ${ok} murid direset (batal sahkan).`);
+    showToast(fail>0 ? `↩️ ${ok} direset, ⚠️ ${fail} gagal (cuba lagi).` : `↩️ ${ok} murid direset (batal sahkan).`);
   }
   if(t.dataset.sahkanBidang){
     const bidangKey = t.dataset.sahkanBidang;
