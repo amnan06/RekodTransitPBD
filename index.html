@@ -117,6 +117,8 @@ h2.page-title{font-size:24px;margin:0 0 18px;color:var(--navy);}
 .stat-sub{font-size:10.5px;color:#9ca3af;margin-top:1px;}
 
 .two-col{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;align-items:start;}
+.selenggara-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;align-items:start;}
+@media (max-width:900px){.selenggara-grid{grid-template-columns:1fr;}}
 @media (max-width:1000px){.two-col{grid-template-columns:1fr;}}
 .year-tabs{display:flex;gap:8px;margin-bottom:14px;}
 .year-tabs button{background:#f3f4f6;border-radius:10px;padding:9px 18px;font-weight:700;font-size:13.5px;color:var(--text);}
@@ -593,7 +595,8 @@ html,body{overflow-x:hidden;max-width:100%;}
       <!-- ===== SELENGGARA VIEW ===== -->
       <div class="view" data-view="selenggara">
         <h2 class="page-title">Selenggara</h2>
-        <div class="card" style="max-width:560px;">
+        <div class="selenggara-grid">
+        <div class="card">
           <h3 class="section-title">Maklumat Sekolah</h3>
           <div class="form-row">
             <div class="field"><label>Nama Sekolah</label><input type="text" id="setSchoolName"></div>
@@ -601,7 +604,7 @@ html,body{overflow-x:hidden;max-width:100%;}
           </div>
           <button class="btn-primary btn-sm" id="btnSimpanSekolah">Simpan</button>
         </div>
-        <div class="card" style="max-width:560px;">
+        <div class="card">
           <h3 class="section-title">Peringatan Deadline</h3>
           <div class="form-row">
             <div class="field"><label>Teks Peringatan</label><input type="text" id="setDeadlineText" placeholder="Contoh: Deadline upload eviden untuk Mesyuarat Panitia"></div>
@@ -610,17 +613,12 @@ html,body{overflow-x:hidden;max-width:100%;}
           <button class="btn-primary btn-sm" id="btnSimpanDeadline">Simpan</button>
           <div id="deadlineArkibWrap" style="margin-top:16px;"></div>
         </div>
-        <div class="card" style="max-width:560px;">
+        <div class="card">
           <h3 class="section-title">Sandaran Data</h3>
           <p class="small-note">Muat turun salinan semua data (murid, rekod TP, markah peperiksaan, keputusan TP) sebagai fail JSON ke peranti Am. Simpan fail ini di tempat selamat sebagai sandaran.</p>
           <button class="btn-primary btn-sm" id="btnMuatTurunSandaran" style="margin-top:8px;">⬇️ Muat Turun Sandaran</button>
         </div>
-        <div class="card" style="max-width:640px;">
-          <h3 class="section-title">Log Aktiviti</h3>
-          <p class="small-note" style="margin-bottom:10px;">Rekod tindakan pengesahan TP terkini (200 terbaru).</p>
-          <div class="table-wrap" id="activityLogWrap" style="max-height:320px;"></div>
-        </div>
-        <div class="card" style="max-width:560px;">
+        <div class="card">
           <h3 class="section-title">Sambungan Google Sheets</h3>
           <p class="small-note">URL ini auto-detect bila dihoskan dalam Apps Script. Ubah hanya jika perlu.</p>
           <div class="field" style="margin-bottom:12px;"><label>Web App URL</label><input type="text" id="apiUrlInput"></div>
@@ -631,6 +629,12 @@ html,body{overflow-x:hidden;max-width:100%;}
           <p class="small-note" id="settingsStatusMsg" style="margin-top:10px;"></p>
           <p class="small-note" id="connStatus2" style="margin-top:4px;"></p>
           <p class="small-note" id="serverVersionLabel" style="margin-top:8px;font-weight:700;"></p>
+        </div>
+        <div class="card" style="grid-column:1 / -1;">
+          <h3 class="section-title">Log Aktiviti</h3>
+          <p class="small-note" style="margin-bottom:10px;">Rekod tindakan pengesahan TP terkini (200 terbaru).</p>
+          <div class="table-wrap" id="activityLogWrap" style="max-height:320px;"></div>
+        </div>
         </div>
       </div>
 
