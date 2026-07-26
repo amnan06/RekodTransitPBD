@@ -449,8 +449,6 @@ html,body{overflow-x:hidden;max-width:100%;}
         <div class="toolbar-row">
           <button class="btn-gold" id="btnUploadPukal">📤 Upload Pukal</button>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <button class="btn-primary admin-only-nav" id="btnSahkanSemua" style="display:none;">✅ Sahkan Rekod</button>
-            <button class="btn-outline admin-only-nav" id="btnResetSahkanSemua" style="display:none;">↩️ Reset Rekod</button>
             <button class="btn-outline admin-only-nav" id="btnResetSemuaTpData" style="display:none;color:#b91c1c;border-color:#fecaca;">🗑️ Reset Semua Data TP</button>
             <button class="btn-outline" id="btnEksportCsv">⬇️ Eksport CSV</button>
           </div>
@@ -467,7 +465,7 @@ html,body{overflow-x:hidden;max-width:100%;}
         <div class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Nama</th><th>Kelas</th><th>TP Semasa</th><th>Rekod</th><th>Kemajuan</th><th>Sah</th><th></th></tr></thead>
+              <thead><tr><th>Nama</th><th>Kelas</th><th>TP Semasa</th><th>Rekod</th><th>Kemajuan</th><th></th></tr></thead>
               <tbody id="rekodTbody"></tbody>
             </table>
           </div>
@@ -1480,11 +1478,9 @@ function renderRekodTable(){
   if(rekodFilter.search) studs = studs.filter(s=>s.nama.toLowerCase().includes(rekodFilter.search.toLowerCase()));
   if(rekodFilter.tp!=="ALL") studs = studs.filter(s=>state.records.some(r=>r.studentId===s.id && r.tp===rekodFilter.tp));
   const isAdmin = session.currentUser && session.currentUser.peranan==="Admin";
-  document.getElementById("btnSahkanSemua").style.display = isAdmin ? "" : "none";
-  document.getElementById("btnResetSahkanSemua").style.display = isAdmin ? "" : "none";
   document.getElementById("btnResetSemuaTpData").style.display = isAdmin ? "" : "none";
   const tbody = document.getElementById("rekodTbody");
-  if(!studs.length){ tbody.innerHTML = `<tr><td colspan="7" class="empty-row">Tiada murid dijumpai.</td></tr>`; return; }
+  if(!studs.length){ tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Tiada murid dijumpai.</td></tr>`; return; }
   tbody.innerHTML = studs.map(s=>{
     let recs = state.records.filter(r=>r.studentId===s.id);
     if(rekodFilter.tp!=="ALL") recs = recs.filter(r=>r.tp===rekodFilter.tp);
@@ -1495,9 +1491,6 @@ function renderRekodTable(){
     const notDone = Math.max(0, maxSlot - recorded);
     const pct = maxSlot ? Math.round(recorded/maxSlot*100) : 0;
     const latestTp = recs.length ? recs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh))[0].tp : null;
-    const sahCell = s.verified
-      ? `✅ Disahkan${isAdmin?` <button class="icon-btn" data-unverify-murid="${s.id}" title="Batal sahkan">↩️</button>`:""}`
-      : (isAdmin ? `<button class="btn-outline btn-sm" data-verify-murid="${s.id}">Sahkan</button>` : "⏳ Belum Disahkan");
     return `<tr>
       <td><div class="acc-row"><div class="avatar-circle">${initials(s.nama)}</div><b>${s.nama}</b></div></td>
       <td>${s.kelas}</td>
@@ -1512,7 +1505,6 @@ function renderRekodTable(){
           </div>
         </div>
       </td>
-      <td>${sahCell}</td>
       <td><button class="btn-outline btn-sm" data-lihat-murid="${s.id}">Lihat</button></td>
     </tr>`;
   }).join("");
@@ -2108,8 +2100,6 @@ document.addEventListener("click", async (e)=>{
     const evidenceImg = document.getElementById("lihatEvidenceThumb").style.display!=="none" ? document.getElementById("lihatEvidenceThumb").src : null;
     const newRecord = { id:uid("r"), studentId:lihatMuridId, bidang, tajuk, tp:tpBtn.dataset.tp, tarikh, evidence:evidenceImg };
     state.records.push(newRecord);
-    const stu = studentById(lihatMuridId);
-    if(stu && stu.verified){ stu.verified = false; apiPost("updateStudent", stu); }
     await saveState();
     await apiPost("addRecord", Object.assign({}, newRecord, { evidenceBase64: evidenceImg }));
     document.querySelectorAll("#lihatTpRow .tp-btn").forEach(b=>b.classList.remove("selected"));
@@ -2134,8 +2124,6 @@ document.addEventListener("click", async (e)=>{
       if(alreadyHas){ skippedDup++; return; }
       const rec={id:uid("r"),studentId:sid,bidang:wizard.bidang,tajuk:wizard.tajuk,tp:wizard.pukalTp,tarikh,evidence:null};
       state.records.push(rec); bulk.push(rec);
-      const stu = studentById(sid);
-      if(stu && stu.verified){ stu.verified = false; apiPost("updateStudent", stu); }
     });
     wizard.pukalSelected.clear(); wizard.pukalTp=null;
     await saveState(); if(bulk.length) await apiPost("addRecordsBulk",{records:bulk});
@@ -2241,58 +2229,6 @@ document.addEventListener("click", async (e)=>{
     t.disabled=false; t.textContent=origTxt;
     showToast(`🗑️ Data TP untuk ${studs.length} murid (${rekodFilter.kelas}) direset.`);
   }
-  if(t.id==="btnSahkanSemua"){
-    if(t.disabled) return;
-    let studs = state.students.filter(s=>!s.deleted);
-    if(rekodFilter.kelas!=="ALL") studs = studs.filter(s=>s.kelas===rekodFilter.kelas);
-    if(rekodFilter.search) studs = studs.filter(s=>s.nama.toLowerCase().includes(rekodFilter.search.toLowerCase()));
-    if(rekodFilter.tp!=="ALL") studs = studs.filter(s=>state.records.some(r=>r.studentId===s.id && r.tp===rekodFilter.tp));
-    const toVerify = studs.filter(s=>!s.verified);
-    if(!toVerify.length){ showToast("Semua murid (ditapis) sudah disahkan."); return; }
-    if(!(await customConfirm(`Sahkan ${toVerify.length} murid sekali gus?`))) return;
-    const origTxt = t.textContent;
-    t.disabled=true;
-    let ok=0, fail=0;
-    try{
-      for(const s of toVerify){
-        t.textContent = `⏳ Menyahkan... (${ok+fail+1}/${toVerify.length})`;
-        s.verified = true;
-        try{ await apiPost("updateStudent", s); ok++; }
-        catch(e){ fail++; }
-      }
-      await saveState();
-    } finally {
-      renderRekodTable();
-      t.textContent = origTxt; t.disabled=false;
-    }
-    showToast(fail>0 ? `✅ ${ok} disahkan, ⚠️ ${fail} gagal (cuba lagi).` : `✅ ${ok} murid disahkan.`);
-  }
-  if(t.id==="btnResetSahkanSemua"){
-    if(t.disabled) return;
-    let studs = state.students.filter(s=>!s.deleted);
-    if(rekodFilter.kelas!=="ALL") studs = studs.filter(s=>s.kelas===rekodFilter.kelas);
-    if(rekodFilter.search) studs = studs.filter(s=>s.nama.toLowerCase().includes(rekodFilter.search.toLowerCase()));
-    if(rekodFilter.tp!=="ALL") studs = studs.filter(s=>state.records.some(r=>r.studentId===s.id && r.tp===rekodFilter.tp));
-    const toReset = studs.filter(s=>s.verified);
-    if(!toReset.length){ showToast("Tiada murid (ditapis) yang disahkan buat masa ini."); return; }
-    if(!(await customConfirm(`Batalkan status Disahkan untuk ${toReset.length} murid sekali gus?`))) return;
-    const origTxt = t.textContent;
-    t.disabled=true;
-    let ok=0, fail=0;
-    try{
-      for(const s of toReset){
-        t.textContent = `⏳ Reset... (${ok+fail+1}/${toReset.length})`;
-        s.verified = false;
-        try{ await apiPost("updateStudent", s); ok++; }
-        catch(e){ fail++; }
-      }
-      await saveState();
-    } finally {
-      renderRekodTable();
-      t.textContent = origTxt; t.disabled=false;
-    }
-    showToast(fail>0 ? `↩️ ${ok} direset, ⚠️ ${fail} gagal (cuba lagi).` : `↩️ ${ok} murid direset (batal sahkan).`);
-  }
   if(t.dataset.sahkanBidang){
     const bidangKey = t.dataset.sahkanBidang;
     const cadanganTp = t.dataset.cadanganTp;
@@ -2383,16 +2319,6 @@ document.addEventListener("click", async (e)=>{
     renderRekodTable();
     updateAdminTpBadge();
     showToast(`TP Akhir ditetapkan: TP${chosenTp}.`);
-  }
-  if(t.dataset.verifyMurid){
-    const s = studentById(t.dataset.verifyMurid); if(!s) return;
-    s.verified = true; await saveState(); apiPost("updateStudent", s);
-    renderRekodTable(); showToast("Rekod murid disahkan.");
-  }
-  if(t.dataset.unverifyMurid){
-    const s = studentById(t.dataset.unverifyMurid); if(!s) return;
-    s.verified = false; await saveState(); apiPost("updateStudent", s);
-    renderRekodTable(); showToast("Pengesahan dibatalkan.");
   }
   if(t.dataset.editMurid){
     const s = studentById(t.dataset.editMurid); if(!s) return;
