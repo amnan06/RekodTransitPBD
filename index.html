@@ -247,8 +247,12 @@ tr:hover td{background:#f8f9fb;}
 @media print{
   body *{visibility:hidden;}
   #printArea, #printArea *{visibility:visible;}
-  #printArea{position:absolute;top:0;left:0;width:100%;padding:20px;display:block!important;}
+  #printArea{position:absolute;top:0;left:0;width:100%;padding:20px;display:block!important;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;}
   .no-print,.sidebar,.topbar{display:none!important;}
+  #printArea table{page-break-inside:auto;}
+  #printArea tr{page-break-inside:avoid;page-break-after:auto;}
+  #printArea thead{display:table-header-group;}
+  @page{margin:16mm 14mm;}
 }
 #printArea{display:none;}
 html,body{overflow-x:hidden;max-width:100%;}
@@ -611,6 +615,11 @@ html,body{overflow-x:hidden;max-width:100%;}
           <p class="small-note">Muat turun salinan semua data (murid, rekod TP, markah peperiksaan, keputusan TP) sebagai fail JSON ke peranti Am. Simpan fail ini di tempat selamat sebagai sandaran.</p>
           <button class="btn-primary btn-sm" id="btnMuatTurunSandaran" style="margin-top:8px;">⬇️ Muat Turun Sandaran</button>
         </div>
+        <div class="card" style="max-width:640px;">
+          <h3 class="section-title">Log Aktiviti</h3>
+          <p class="small-note" style="margin-bottom:10px;">Rekod tindakan pengesahan TP terkini (200 terbaru).</p>
+          <div class="table-wrap" id="activityLogWrap" style="max-height:320px;"></div>
+        </div>
         <div class="card" style="max-width:560px;">
           <h3 class="section-title">Sambungan Google Sheets</h3>
           <p class="small-note">URL ini auto-detect bila dihoskan dalam Apps Script. Ubah hanya jika perlu.</p>
@@ -901,7 +910,7 @@ const FALLBACK_EXEC_URL = "https://script.google.com/macros/s/AKfycbw5lTxFcS_M09
 
 let state = {
   settings:{ schoolName:"SK SERI GRISEK", schoolCode:"", apiUrl:FALLBACK_EXEC_URL, deadlineText:"", deadlineDate:"", deadlineMemos:[] },
-  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[], tpSemasaDecisions:[]
+  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[], tpSemasaDecisions:[], activityLog:[]
 };
 let session = { currentUser:null };
 let wizard = { bidang:null, tajuk:null, mode:"individu", pukalTp:null, pukalSelected:new Set(), examJenis:"UPSA" };
@@ -1039,6 +1048,14 @@ function computeTpSemasaCadangan(studentId){
   }));
   return { profile, cadanganTp, cadanganLabel, dist, totalTopics };
 }
+/* Checksum ringkas rekod murid - untuk kesan bila rekod berubah selepas TP disahkan */
+function recordsChecksum(studentId){
+  const arr = state.records.filter(r=>r.studentId===studentId).map(r=>`${r.bidang}|${r.tajuk}|${r.tp}`).sort();
+  let h = 0;
+  const str = arr.join(";");
+  for(let i=0;i<str.length;i++){ h = ((h<<5)-h+str.charCodeAt(i))|0; }
+  return String(h);
+}
 function computeOverallProfile(studentId){
   const bidangList = Object.entries(BIDANG).map(([key,b])=>{
     const distInfo = bidangDistribution(studentId, key);
@@ -1080,6 +1097,12 @@ function computeTpAkhirCadangan(studentId){
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtDate(iso){ if(!iso) return "-"; const datePart = String(iso).split("T")[0]; const [y,m,d]=datePart.split("-"); if(!y||!m||!d) return datePart; return `${d}/${m}/${y}`; }
+function fmtDateTime(iso){
+  if(!iso) return "-";
+  const dt = new Date(iso);
+  if(isNaN(dt.getTime())) return String(iso);
+  return dt.toLocaleString("ms-MY",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
 function currentStudents(){ return sortByName(state.students.filter(s=>s.kelas===state.settings.currentClass && !s.deleted)); }
 function studentById(id){ return state.students.find(s=>s.id===id); }
 function uid(p){ return p+Math.random().toString(36).slice(2,9); }
@@ -1173,6 +1196,7 @@ async function syncFromServer(){
       if(server.bidangDecisions) state.bidangDecisions = server.bidangDecisions;
       if(server.tpAkhirDecisions) state.tpAkhirDecisions = server.tpAkhirDecisions;
       if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
+      if(server.activityLog) state.activityLog = server.activityLog;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName = server.settings.schoolName;
         if(server.settings.schoolCode) state.settings.schoolCode = server.settings.schoolCode;
@@ -1201,10 +1225,33 @@ function saveState(){
   return new Promise(res=>{ saveTimer=setTimeout(async ()=>{ try{ await storageSet("pi-dashboard-data", JSON.stringify(state)); }catch(e){} res(); },150); });
 }
 
-function tryLogin(username, password){
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function looksHashed(str){ return typeof str==="string" && /^[0-9a-f]{64}$/i.test(str); }
+function logActivity(action, detail){
+  try{
+    apiPost("logActivity", {
+      actor: (session.currentUser && session.currentUser.nama) || "?",
+      action, detail,
+      timestamp: new Date().toISOString()
+    });
+  }catch(e){}
+}
+async function tryLogin(username, password){
   const uname = String(username).trim().toLowerCase();
   const pass = String(password).trim();
-  const u = state.users.find(x => String(x.username).trim().toLowerCase()===uname && String(x.password).trim()===pass);
+  const hashed = await sha256Hex(pass);
+  let u = state.users.find(x => String(x.username).trim().toLowerCase()===uname && String(x.password).trim()===hashed);
+  if(u) return u;
+  // Sokongan mundur: akaun lama yang password masih plaintext - padan terus, lalu migrasi senyap ke hash
+  u = state.users.find(x => String(x.username).trim().toLowerCase()===uname && !looksHashed(x.password) && String(x.password).trim()===pass);
+  if(u){
+    u.password = hashed;
+    await saveState();
+    apiPost("updateUser", {id:u.id, nama:u.nama, username:u.username, password:u.password, peranan:u.peranan, telefon:u.telefon||""});
+  }
   return u || null;
 }
 let appDataReady = false;
@@ -1213,12 +1260,12 @@ async function doLogin(){
   const uname = document.getElementById("loginUsername").value;
   const pass = document.getElementById("loginPassword").value;
   if(!uname || !pass){ errEl.textContent="Sila isi nama pengguna & kata laluan."; return; }
-  let user = tryLogin(uname, pass);
+  let user = await tryLogin(uname, pass);
   if(!user){
     // Cache tempatan mungkin lapuk (contoh: akaun baharu ditambah dari peranti lain) - cuba segerak sekali sebelum tolak log masuk
     errEl.textContent = "Menyemak data terkini...";
     await syncFromServer();
-    user = tryLogin(uname, pass);
+    user = await tryLogin(uname, pass);
   }
   if(!user){ errEl.textContent="Nama pengguna atau kata laluan salah."; return; }
   errEl.textContent="";
@@ -1293,14 +1340,19 @@ function totalTajukForYear(year){
   return total;
 }
 function getPendingTpStudents(){
-  const confirmedIds = new Set((state.tpAkhirDecisions||[]).map(d=>d.studentId));
+  const decisionByStudent = {};
+  (state.tpAkhirDecisions||[]).forEach(d=>{ decisionByStudent[d.studentId] = d; });
   return sortByClassThenName(state.students.filter(s=>{
-    if(s.deleted || confirmedIds.has(s.id)) return false;
+    if(s.deleted) return false;
     const year = getYearFromClass(s.kelas);
     const totalNeeded = totalTajukForYear(year);
     if(!totalNeeded) return false;
     const doneTopics = new Set(state.records.filter(r=>r.studentId===s.id).map(r=>r.bidang+"|"+r.tajuk));
-    return doneTopics.size >= totalNeeded;
+    if(doneTopics.size < totalNeeded) return false;
+    const dec = decisionByStudent[s.id];
+    if(!dec) return true; // belum pernah disahkan langsung
+    const isStale = dec.snapshot && dec.snapshot !== recordsChecksum(s.id);
+    return isStale; // dah disahkan tapi rekod dah berubah - perlu semak semula
   }));
 }
 function getPendingTpCount(){
@@ -1576,7 +1628,9 @@ function renderTpView(){
   const semasa = computeTpSemasaCadangan(studentId);
   const tpSemasaDec = getTpSemasaDecision(studentId);
 
+  const currentChecksum = recordsChecksum(studentId);
   const isSemasaFinal = tpSemasaDec && tpSemasaDec.status!=="Menunggu Pengesahan";
+  const isSemasaStale = isSemasaFinal && tpSemasaDec.snapshot && tpSemasaDec.snapshot!==currentChecksum;
   const semasaFinalTp = isSemasaFinal ? tpSemasaDec.tpMuktamad : semasa.cadanganTp;
   const semasaDistRows = semasa.dist.map(d=>
     `<div class="rank-row"><div class="rank-label" style="width:60px;">TP${d.tp}</div><div class="rank-bar-track"><div class="rank-bar-fill" style="width:${d.pct}%;background:${d.tp===semasa.cadanganTp?'#c9973e':'#9aa5b8'};"></div></div><div class="rank-val">${d.bil} (${d.pct}%)</div></div>`
@@ -1592,8 +1646,9 @@ function renderTpView(){
         ${isSemasaFinal ? `<div class="a-sub" style="margin-top:4px;">Status: <b>${tpSemasaDec.status}</b> pada ${fmtDate(tpSemasaDec.tarikhPengesahan)}${tpSemasaDec.catatan?`<br>Catatan: "${tpSemasaDec.catatan}"`:""}</div>` : ""}
       </div>
     </div>
+    ${isSemasaStale ? `<div class="alert-box" style="background:#fff7ed;border-color:#fed7aa;margin-top:8px;"><div class="a-icon">⚠️</div><div><b>Rekod murid berubah selepas TP Semasa disahkan</b><div class="a-sub">Sila semak semula tajuk dan sahkan sekali lagi.</div></div></div>` : ""}
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn-primary btn-sm" data-sahkan-tp-semasa="1" data-cadangan-tp="${semasa.cadanganTp}" ${isSemasaFinal?'disabled style="opacity:.5;cursor:not-allowed;background:#9aa5b8;border-color:#9aa5b8;"':''}>${isSemasaFinal?'🔒 Telah Disahkan':`✓ Sahkan TP${semasa.cadanganTp}`}</button>
+      <button class="btn-primary btn-sm" data-sahkan-tp-semasa="1" data-cadangan-tp="${semasa.cadanganTp}" ${(isSemasaFinal&&!isSemasaStale)?'disabled style="opacity:.5;cursor:not-allowed;background:#9aa5b8;border-color:#9aa5b8;"':''}>${(isSemasaFinal&&!isSemasaStale)?'🔒 Telah Disahkan':(isSemasaStale?`↻ Sahkan Semula TP${semasa.cadanganTp}`:`✓ Sahkan TP${semasa.cadanganTp}`)}</button>
       <button class="btn-outline btn-sm" data-ubah-tp-semasa="1">✎ Pilih TP Lain</button>
     </div>
     <div id="ubahTpSemasaPanel" style="display:none;margin-top:10px;padding:14px;background:#f8f9fb;border-radius:10px;border:1px solid var(--border);">
@@ -1608,6 +1663,7 @@ function renderTpView(){
   const bidangCards = cad.profile.bidangList.filter(b=>b.count>0).map(b=>{
     const distTxt = [5,4,3,2,1].filter(l=>b.dist[l]>0).map(l=>`TP${l}: ${b.dist[l]} tajuk`).join(" · ");
     const decided = b.decision && b.decision.status!=="Cadangan Sistem";
+    const bidangStale = decided && b.decision.snapshot && b.decision.snapshot!==currentChecksum;
     return `<div class="tajuk-bidang-block">
       <h4>${b.label} <span class="small-note">(${b.count} tajuk)</span></h4>
       <div class="small-note" style="margin-bottom:6px;">${distTxt}</div>
@@ -1617,9 +1673,10 @@ function renderTpView(){
         ${decided
           ? `<span class="badge" style="background:#dcfce7;color:#166534;">TP${b.tpBidangFinal} — ${b.decision.status}</span>`
           : `<span class="badge" style="background:#fef3c7;color:#92400e;">Cadangan Sistem — Pertimbangan Guru Diperlukan</span>`}
+        ${bidangStale ? `<span class="badge" style="background:#fff7ed;color:#9a3412;">⚠️ Rekod berubah — sila semak semula</span>` : ""}
       </div>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <button class="btn-outline btn-sm" data-sahkan-bidang="${b.key}" data-cadangan-tp="${b.cadanganTp}" ${decided?'disabled style="opacity:.5;cursor:not-allowed;"':''}>${decided?'🔒 Telah Disahkan':`✓ Sahkan TP${b.cadanganTp}`}</button>
+        <button class="btn-outline btn-sm" data-sahkan-bidang="${b.key}" data-cadangan-tp="${b.cadanganTp}" ${(decided&&!bidangStale)?'disabled style="opacity:.5;cursor:not-allowed;"':''}>${(decided&&!bidangStale)?'🔒 Telah Disahkan':(bidangStale?`↻ Sahkan Semula TP${b.cadanganTp}`:`✓ Sahkan TP${b.cadanganTp}`)}</button>
         <select data-ubah-bidang-select="${b.key}" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;">
           ${TP_LIST.map(tp=>`<option value="${tp.replace('TP','')}" ${b.decision&&String(b.decision.tpBidang)===tp.replace('TP','')?'selected':''}>${tp}</option>`).join("")}
         </select>
@@ -1637,6 +1694,7 @@ function renderTpView(){
   }).join("");
 
   const isFinal = tpAkhirDec && tpAkhirDec.status!=="Menunggu Pengesahan";
+  const isAkhirStale = isFinal && tpAkhirDec.snapshot && tpAkhirDec.snapshot!==currentChecksum;
   const finalTp = isFinal ? tpAkhirDec.tpMuktamad : cad.cadanganTp;
   box.innerHTML = `
     <h3 class="section-title">${s.nama} (${s.kelas})</h3>
@@ -1667,8 +1725,9 @@ function renderTpView(){
         ${isFinal ? `<div class="a-sub" style="margin-top:6px;">Status: <b>${tpAkhirDec.status}</b> pada ${fmtDate(tpAkhirDec.tarikhPengesahan)}${tpAkhirDec.catatan?`<br>Catatan: "${tpAkhirDec.catatan}"`:""}</div>` : ""}
       </div>
     </div>
+    ${isAkhirStale ? `<div class="alert-box" style="background:#fff7ed;border-color:#fed7aa;margin-top:8px;"><div class="a-icon">⚠️</div><div><b>Rekod murid berubah selepas TP Akhir disahkan</b><div class="a-sub">Sila semak semula keseluruhan sebelum sahkan sekali lagi.</div></div></div>` : ""}
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn-primary btn-sm" data-sahkan-tp-akhir="1" data-cadangan-tp="${cad.cadanganTp}" ${isFinal?'disabled style="opacity:.5;cursor:not-allowed;background:#9aa5b8;border-color:#9aa5b8;"':''}>${isFinal?'🔒 Telah Disahkan':`✓ Sahkan TP${cad.cadanganTp}`}</button>
+      <button class="btn-primary btn-sm" data-sahkan-tp-akhir="1" data-cadangan-tp="${cad.cadanganTp}" ${(isFinal&&!isAkhirStale)?'disabled style="opacity:.5;cursor:not-allowed;background:#9aa5b8;border-color:#9aa5b8;"':''}>${(isFinal&&!isAkhirStale)?'🔒 Telah Disahkan':(isAkhirStale?`↻ Sahkan Semula TP${cad.cadanganTp}`:`✓ Sahkan TP${cad.cadanganTp}`)}</button>
       <button class="btn-outline btn-sm" data-ubah-tp-akhir="1">✎ Pilih TP Lain</button>
     </div>
     <div id="ubahTpAkhirPanel" style="display:none;margin-top:10px;padding:14px;background:#f8f9fb;border-radius:10px;border:1px solid var(--border);">
@@ -1869,7 +1928,15 @@ function renderAnalysis(){
 
 /* ================= PRINT ================= */
 function buildPrintHeader(){
-  return `<div style="text-align:center;margin-bottom:20px;"><h2 style="margin:0;">${state.settings.schoolName}</h2><h3 style="margin:4px 0;">REKOD PERKEMBANGAN MURID PENDIDIKAN ISLAM</h3></div>`;
+  const tarikhCetak = new Date().toLocaleDateString("ms-MY",{day:"2-digit",month:"long",year:"numeric"});
+  return `<div style="display:flex;align-items:center;gap:16px;border-bottom:3px solid #1e2a4a;padding-bottom:14px;margin-bottom:20px;">
+    <img src="data:image/jpeg;base64,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" alt="Logo Sekolah" style="width:64px;height:64px;object-fit:cover;border-radius:50%;flex-shrink:0;">
+    <div style="text-align:center;flex:1;">
+      <h2 style="margin:0;font-size:19px;">${state.settings.schoolName}</h2>
+      <h3 style="margin:4px 0;font-size:15px;">REKOD PERKEMBANGAN MURID PENDIDIKAN ISLAM</h3>
+      <div style="font-size:11px;color:#555;">Dicetak pada: ${tarikhCetak}</div>
+    </div>
+  </div>`;
 }
 function doPrint(html){ document.getElementById("printArea").innerHTML = html; window.print(); }
 function printExamAll(jenis){
@@ -1886,8 +1953,43 @@ function printExamAll(jenis){
 function printStudentReport(studentId){
   const s = studentById(studentId); if(!s) return;
   const recs = state.records.filter(r=>r.studentId===studentId).sort((a,b)=>b.tarikh.localeCompare(a.tarikh));
-  const rows = recs.map(r=>`<tr><td>${BIDANG[r.bidang]?.label||r.bidang}</td><td>${r.tajuk}</td><td>${r.tp}</td><td>${fmtDate(r.tarikh)}</td></tr>`).join("");
-  doPrint(buildPrintHeader()+`<h4>Rekod Perkembangan Murid: ${s.nama} (${s.kelas})</h4><table border="1" cellspacing="0" cellpadding="6" style="width:100%;border-collapse:collapse;"><tr><th>Bidang</th><th>Tajuk</th><th>TP</th><th>Tarikh</th></tr>${rows}</table>`);
+  const rows = recs.map(r=>`<tr><td>${BIDANG[r.bidang]?.label||r.bidang}</td><td>${r.tajuk}</td><td style="text-align:center;">${r.tp}</td><td style="text-align:center;">${fmtDate(r.tarikh)}</td></tr>`).join("");
+  const tpAkhirDec = getTpAkhirDecision(studentId);
+  const tpSemasaDec = getTpSemasaDecision(studentId);
+  const isFinal = tpAkhirDec && tpAkhirDec.status!=="Menunggu Pengesahan";
+  const isSemasaFinal = tpSemasaDec && tpSemasaDec.status!=="Menunggu Pengesahan";
+  const summaryBlock = `
+    <div style="display:flex;gap:20px;margin:14px 0 18px;">
+      <div style="flex:1;border:1.5px solid #1e2a4a;border-radius:8px;padding:10px 14px;">
+        <div style="font-size:10.5px;color:#666;font-weight:700;">TP SEMASA</div>
+        <div style="font-size:20px;font-weight:800;color:#1e2a4a;">${isSemasaFinal ? "TP"+tpSemasaDec.tpMuktamad : "-"}</div>
+        <div style="font-size:10px;color:#666;">${isSemasaFinal ? "Muktamad — "+fmtDate(tpSemasaDec.tarikhPengesahan) : "Belum disahkan"}</div>
+      </div>
+      <div style="flex:1;border:1.5px solid #1e2a4a;border-radius:8px;padding:10px 14px;">
+        <div style="font-size:10.5px;color:#666;font-weight:700;">TP AKHIR</div>
+        <div style="font-size:20px;font-weight:800;color:#1e2a4a;">${isFinal ? "TP"+tpAkhirDec.tpMuktamad : "-"}</div>
+        <div style="font-size:10px;color:#666;">${isFinal ? "Muktamad — "+fmtDate(tpAkhirDec.tarikhPengesahan) : "Belum disahkan"}</div>
+      </div>
+    </div>`;
+  const signatureBlock = `
+    <div style="display:flex;gap:40px;margin-top:60px;page-break-inside:avoid;">
+      <div style="flex:1;text-align:center;">
+        <div style="border-top:1px solid #333;margin-top:40px;padding-top:6px;font-size:12px;">Tandatangan Guru</div>
+      </div>
+      <div style="flex:1;text-align:center;">
+        <div style="border-top:1px solid #333;margin-top:40px;padding-top:6px;font-size:12px;">Tandatangan Guru Besar / GPMP</div>
+      </div>
+    </div>`;
+  doPrint(buildPrintHeader()+`
+    <h4 style="margin-bottom:2px;">Rekod Perkembangan Murid</h4>
+    <div style="font-size:14px;margin-bottom:10px;"><b>${s.nama}</b> &nbsp;·&nbsp; Kelas: <b>${s.kelas}</b></div>
+    ${summaryBlock}
+    <table border="1" cellspacing="0" cellpadding="7" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <thead><tr style="background:#f0f2f6;"><th>Bidang</th><th>Tajuk</th><th>TP</th><th>Tarikh</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${signatureBlock}
+  `);
 }
 function printRecordsIndividu(){
   const target = document.getElementById("cetakMuridSelect").value;
@@ -1900,12 +2002,23 @@ function printRecordsAll(){
   if(!studs.length){ showToast("Tiada murid dalam kelas ini."); return; }
   let html = buildPrintHeader() + `<h4>Rekod Perkembangan Murid — ${kelas.toUpperCase()} (Semua Murid)</h4>`;
   let anyData = false;
-  studs.forEach(s=>{
+  studs.forEach((s,idx)=>{
     const recs = state.records.filter(r=>r.studentId===s.id).sort((a,b)=>b.tarikh.localeCompare(a.tarikh));
     if(!recs.length) return;
     anyData = true;
-    const rows = recs.map(r=>`<tr><td>${BIDANG[r.bidang]?.label||r.bidang}</td><td>${r.tajuk}</td><td>${r.tp}</td><td>${fmtDate(r.tarikh)}</td></tr>`).join("");
-    html += `<h5 style="margin-top:16px;">${s.nama}</h5><table border="1" cellspacing="0" cellpadding="5" style="width:100%;border-collapse:collapse;margin-bottom:10px;"><tr><th>Bidang</th><th>Tajuk</th><th>TP</th><th>Tarikh</th></tr>${rows}</table>`;
+    const tpAkhirDec = getTpAkhirDecision(s.id);
+    const isFinal = tpAkhirDec && tpAkhirDec.status!=="Menunggu Pengesahan";
+    const rows = recs.map(r=>`<tr><td>${BIDANG[r.bidang]?.label||r.bidang}</td><td>${r.tajuk}</td><td style="text-align:center;">${r.tp}</td><td style="text-align:center;">${fmtDate(r.tarikh)}</td></tr>`).join("");
+    html += `<div style="page-break-inside:avoid;margin-top:${idx===0?'8':'22'}px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #1e2a4a;padding-bottom:4px;margin-bottom:6px;">
+        <h5 style="margin:0;font-size:13.5px;">${idx+1}. ${s.nama}</h5>
+        <span style="font-size:11.5px;font-weight:700;color:${isFinal?'#166534':'#92400e'};">${isFinal ? "TP Akhir: TP"+tpAkhirDec.tpMuktamad+" (Muktamad)" : "TP Akhir: Belum disahkan"}</span>
+      </div>
+      <table border="1" cellspacing="0" cellpadding="5" style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:6px;">
+        <thead><tr style="background:#f0f2f6;"><th>Bidang</th><th>Tajuk</th><th>TP</th><th>Tarikh</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
   });
   if(!anyData){ showToast("Tiada rekod TP untuk kelas ini lagi."); return; }
   doPrint(html);
@@ -1969,6 +2082,16 @@ function renderSelenggaraView(){
           </div>
         `).join("")}
       </div>`;
+  }
+
+  const logWrap = document.getElementById("activityLogWrap");
+  const log = state.activityLog || [];
+  if(!log.length){
+    logWrap.innerHTML = `<p class="small-note">Tiada aktiviti direkod lagi.</p>`;
+  } else {
+    logWrap.innerHTML = `<table><thead><tr><th>Masa</th><th>Oleh</th><th>Tindakan</th><th>Butiran</th></tr></thead><tbody>
+      ${log.map(l=>`<tr><td style="white-space:nowrap;font-size:12px;">${fmtDateTime(l.timestamp)}</td><td>${l.actor}</td><td>${l.action}</td><td>${l.detail}</td></tr>`).join("")}
+    </tbody></table>`;
   }
 }
 
@@ -2230,6 +2353,7 @@ document.addEventListener("click", async (e)=>{
       state.tpSemasaDecisions = (state.tpSemasaDecisions||[]).filter(d=>!ids.includes(d.studentId));
       await saveState();
       await apiPost("resetTpData", { studentIds: ids });
+      logActivity("Reset Semua Data TP", `Kelas ${rekodFilter.kelas} — ${studs.length} murid, ${recCount} rekod dipadam`);
     } catch(e){}
     renderRekodTable();
     updateAdminTpBadge();
@@ -2239,11 +2363,13 @@ document.addEventListener("click", async (e)=>{
   if(t.dataset.sahkanBidang){
     const bidangKey = t.dataset.sahkanBidang;
     const cadanganTp = t.dataset.cadanganTp;
-    const dec = { studentId: tpViewStudentId, bidangKey, tpBidang: cadanganTp, status:"Disahkan Guru", tarikh: todayStr() };
+    const s = studentById(tpViewStudentId);
+    const dec = { studentId: tpViewStudentId, bidangKey, tpBidang: cadanganTp, status:"Disahkan Guru", tarikh: todayStr(), snapshot: recordsChecksum(tpViewStudentId) };
     if(!state.bidangDecisions) state.bidangDecisions=[];
     const idx = state.bidangDecisions.findIndex(d=>d.studentId===tpViewStudentId && d.bidangKey===bidangKey);
     if(idx>=0) state.bidangDecisions[idx]=dec; else state.bidangDecisions.push(dec);
     await saveState(); await apiPost("saveBidangDecision", dec);
+    logActivity("Sahkan Bidang", `${s?.nama||tpViewStudentId} — ${BIDANG[bidangKey]?.label||bidangKey}: TP${cadanganTp}`);
     renderTpView();
     showToast(`Bidang disahkan pada TP${cadanganTp}.`);
   }
@@ -2251,21 +2377,25 @@ document.addEventListener("click", async (e)=>{
     const bidangKey = t.dataset.ubahBidang;
     const sel = document.querySelector(`[data-ubah-bidang-select="${bidangKey}"]`);
     const chosenTp = sel.value;
-    const dec = { studentId: tpViewStudentId, bidangKey, tpBidang: chosenTp, status:"Ditentukan Guru", tarikh: todayStr() };
+    const s = studentById(tpViewStudentId);
+    const dec = { studentId: tpViewStudentId, bidangKey, tpBidang: chosenTp, status:"Ditentukan Guru", tarikh: todayStr(), snapshot: recordsChecksum(tpViewStudentId) };
     if(!state.bidangDecisions) state.bidangDecisions=[];
     const idx = state.bidangDecisions.findIndex(d=>d.studentId===tpViewStudentId && d.bidangKey===bidangKey);
     if(idx>=0) state.bidangDecisions[idx]=dec; else state.bidangDecisions.push(dec);
     await saveState(); await apiPost("saveBidangDecision", dec);
+    logActivity("Tetapkan Bidang", `${s?.nama||tpViewStudentId} — ${BIDANG[bidangKey]?.label||bidangKey}: TP${chosenTp} (ditentukan manual)`);
     renderTpView();
     showToast(`Bidang ditetapkan pada TP${chosenTp}.`);
   }
   if(t.dataset.sahkanTpSemasa){
     const cadanganTp = t.dataset.cadanganTp;
-    const dec = { studentId: tpViewStudentId, tpCadangan: cadanganTp, tpMuktamad: cadanganTp, tarikhPengesahan: todayStr(), status:"Disahkan Guru", catatan:"" };
+    const s = studentById(tpViewStudentId);
+    const dec = { studentId: tpViewStudentId, tpCadangan: cadanganTp, tpMuktamad: cadanganTp, tarikhPengesahan: todayStr(), status:"Disahkan Guru", catatan:"", snapshot: recordsChecksum(tpViewStudentId) };
     if(!state.tpSemasaDecisions) state.tpSemasaDecisions=[];
     const idx = state.tpSemasaDecisions.findIndex(d=>d.studentId===tpViewStudentId);
     if(idx>=0) state.tpSemasaDecisions[idx]=dec; else state.tpSemasaDecisions.push(dec);
     await saveState(); await apiPost("saveTpSemasaDecision", dec);
+    logActivity("Sahkan TP Semasa", `${s?.nama||tpViewStudentId}: TP${cadanganTp}`);
     renderTpView();
     showToast(`TP Semasa disahkan: TP${cadanganTp}.`);
   }
@@ -2283,21 +2413,25 @@ document.addEventListener("click", async (e)=>{
     const chosenTp = chosenBtn.dataset.semasaTp.replace("TP","");
     const catatan = document.getElementById("catatanTpSemasa").value.trim();
     const semasa = computeTpSemasaCadangan(tpViewStudentId);
-    const dec = { studentId: tpViewStudentId, tpCadangan: String(semasa.cadanganTp||""), tpMuktamad: chosenTp, tarikhPengesahan: todayStr(), status:"Ditentukan Guru", catatan };
+    const s = studentById(tpViewStudentId);
+    const dec = { studentId: tpViewStudentId, tpCadangan: String(semasa.cadanganTp||""), tpMuktamad: chosenTp, tarikhPengesahan: todayStr(), status:"Ditentukan Guru", catatan, snapshot: recordsChecksum(tpViewStudentId) };
     if(!state.tpSemasaDecisions) state.tpSemasaDecisions=[];
     const idx = state.tpSemasaDecisions.findIndex(d=>d.studentId===tpViewStudentId);
     if(idx>=0) state.tpSemasaDecisions[idx]=dec; else state.tpSemasaDecisions.push(dec);
     await saveState(); await apiPost("saveTpSemasaDecision", dec);
+    logActivity("Tetapkan TP Semasa", `${s?.nama||tpViewStudentId}: TP${chosenTp} (ditentukan manual)`);
     renderTpView();
     showToast(`TP Semasa ditetapkan: TP${chosenTp}.`);
   }
   if(t.dataset.sahkanTpAkhir){
     const cadanganTp = t.dataset.cadanganTp;
-    const dec = { studentId: tpViewStudentId, tpCadangan: cadanganTp, tpMuktamad: cadanganTp, tarikhPengesahan: todayStr(), status:"Disahkan Guru", catatan:"" };
+    const s = studentById(tpViewStudentId);
+    const dec = { studentId: tpViewStudentId, tpCadangan: cadanganTp, tpMuktamad: cadanganTp, tarikhPengesahan: todayStr(), status:"Disahkan Guru", catatan:"", snapshot: recordsChecksum(tpViewStudentId) };
     if(!state.tpAkhirDecisions) state.tpAkhirDecisions=[];
     const idx = state.tpAkhirDecisions.findIndex(d=>d.studentId===tpViewStudentId);
     if(idx>=0) state.tpAkhirDecisions[idx]=dec; else state.tpAkhirDecisions.push(dec);
     await saveState(); await apiPost("saveTpAkhirDecision", dec);
+    logActivity("Sahkan TP Akhir", `${s?.nama||tpViewStudentId} (${s?.kelas||""}): TP${cadanganTp}`);
     renderTpView();
     renderRekodTable();
     updateAdminTpBadge();
@@ -2317,11 +2451,13 @@ document.addEventListener("click", async (e)=>{
     const chosenTp = chosenBtn.dataset.finalTp.replace("TP","");
     const catatan = document.getElementById("catatanTpAkhir").value.trim();
     const cad = computeTpAkhirCadangan(tpViewStudentId);
-    const dec = { studentId: tpViewStudentId, tpCadangan: String(cad.cadanganTp||""), tpMuktamad: chosenTp, tarikhPengesahan: todayStr(), status:"Ditentukan Guru", catatan };
+    const s = studentById(tpViewStudentId);
+    const dec = { studentId: tpViewStudentId, tpCadangan: String(cad.cadanganTp||""), tpMuktamad: chosenTp, tarikhPengesahan: todayStr(), status:"Ditentukan Guru", catatan, snapshot: recordsChecksum(tpViewStudentId) };
     if(!state.tpAkhirDecisions) state.tpAkhirDecisions=[];
     const idx = state.tpAkhirDecisions.findIndex(d=>d.studentId===tpViewStudentId);
     if(idx>=0) state.tpAkhirDecisions[idx]=dec; else state.tpAkhirDecisions.push(dec);
     await saveState(); await apiPost("saveTpAkhirDecision", dec);
+    logActivity("Tetapkan TP Akhir", `${s?.nama||tpViewStudentId} (${s?.kelas||""}): TP${chosenTp} (ditentukan manual)${catatan?" — "+catatan:""}`);
     renderTpView();
     renderRekodTable();
     updateAdminTpBadge();
@@ -2480,18 +2616,18 @@ document.addEventListener("click", async (e)=>{
     if(t.disabled) return;
     const nama=document.getElementById("guruNama").value.trim();
     const username=document.getElementById("guruUsername").value.trim();
-    const password=document.getElementById("guruPassword").value;
+    const passwordRaw=document.getElementById("guruPassword").value;
     const peranan=document.getElementById("guruPeranan").value;
     const telefon=document.getElementById("guruTelefon").value.trim();
     if(!nama||!username){ showToast("Sila lengkapkan nama & nama pengguna."); return; }
-    if(!editingGuruId && !password){ showToast("Sila masukkan kata laluan untuk akaun baharu."); return; }
+    if(!editingGuruId && !passwordRaw){ showToast("Sila masukkan kata laluan untuk akaun baharu."); return; }
     t.disabled=true;
     if(editingGuruId){
       const u = state.users.find(x=>x.id===editingGuruId);
-      u.nama=nama; u.username=username; if(password) u.password=password; u.peranan=peranan; u.telefon=telefon;
+      u.nama=nama; u.username=username; if(passwordRaw) u.password=await sha256Hex(passwordRaw.trim()); u.peranan=peranan; u.telefon=telefon;
       await saveState(); await apiPost("updateUser",{id:u.id,nama:u.nama,username:u.username,password:u.password,peranan:u.peranan,telefon:u.telefon});
     } else {
-      const newUser={id:uid("u"),nama,username,password,peranan,telefon,lastLogin:""};
+      const newUser={id:uid("u"),nama,username,password:await sha256Hex(passwordRaw.trim()),peranan,telefon,lastLogin:""};
       state.users.push(newUser); await saveState(); await apiPost("addUser",newUser);
     }
     closeModal("guruModal"); renderGuruView(); showToast("Akaun disimpan.");
@@ -2560,6 +2696,7 @@ document.addEventListener("click", async (e)=>{
       if(server.bidangDecisions) state.bidangDecisions = server.bidangDecisions;
       if(server.tpAkhirDecisions) state.tpAkhirDecisions = server.tpAkhirDecisions;
       if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
+      if(server.activityLog) state.activityLog = server.activityLog;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName=server.settings.schoolName;
         if(server.settings.deadlineMemos){ try{ state.settings.deadlineMemos=JSON.parse(server.settings.deadlineMemos); }catch(e){} }
