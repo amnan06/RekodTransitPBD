@@ -43,7 +43,7 @@ input,select{font-family:inherit;}
 .login-card .sub2{font-size:13px;color:var(--muted);margin-bottom:28px;}
 .login-field{text-align:left;margin-bottom:18px;}
 .login-field label{display:block;font-size:11.5px;font-weight:800;letter-spacing:.4px;color:var(--muted);margin-bottom:6px;}
-.login-field input{width:100%;padding:13px 15px;border:1.5px solid var(--border);border-radius:12px;font-size:14.5px;background:#fafbfc;}
+.login-field input{width:100%;padding:13px 15px;border:1.5px solid var(--border);border-radius:12px;font-size:16px;background:#fafbfc;}
 .login-field input:focus{outline:none;border-color:var(--navy);background:#fff;}
 .btn-login{width:100%;padding:14px;border-radius:12px;background:var(--navy);color:#fff;font-weight:700;font-size:15.5px;margin-top:6px;}
 .btn-login:hover{background:var(--navy-dark);}
@@ -755,6 +755,11 @@ html,body{overflow-x:hidden;max-width:100%;}
           <button class="btn-outline btn-sm" id="btnPilihSemua">Pilih Semua</button>
         </div>
         <div class="student-list-box" id="pukalStudentList"></div>
+        <div class="evidence-row" style="margin-top:14px;">
+          <label class="hint" style="font-weight:700;color:var(--text);font-size:13px;">📎 Upload Evidence (pilihan — akan dikongsi untuk semua murid dipilih):</label>
+          <input type="file" id="pukalEvidence" accept="image/*">
+          <img id="pukalEvidenceThumb" class="evidence-thumb" style="display:none;">
+        </div>
         <button class="btn-primary" id="btnSimpanSemua" style="margin-top:14px;">Simpan Semua</button>
       </div>
     </div>
@@ -2251,17 +2256,21 @@ document.addEventListener("click", async (e)=>{
     const tarikh = document.getElementById("pukalTarikh").value || todayStr();
     if(!wizard.pukalTp){ showToast("Sila pilih Tahap Penguasaan (TP)."); return; }
     if(wizard.pukalSelected.size===0){ showToast("Sila pilih sekurang-kurangnya seorang murid."); return; }
+    const evidenceThumb = document.getElementById("pukalEvidenceThumb");
+    const evidenceImg = evidenceThumb.style.display!=="none" ? evidenceThumb.src : null;
     const origTxt2 = t.textContent;
     t.disabled=true; t.textContent="⏳ Menyimpan...";
     const bulk=[]; let skippedDup=0;
     wizard.pukalSelected.forEach(sid=>{
       const alreadyHas = state.records.some(r=>r.studentId===sid && r.bidang===wizard.bidang && r.tajuk===wizard.tajuk);
       if(alreadyHas){ skippedDup++; return; }
-      const rec={id:uid("r"),studentId:sid,bidang:wizard.bidang,tajuk:wizard.tajuk,tp:wizard.pukalTp,tarikh,evidence:null};
+      const rec={id:uid("r"),studentId:sid,bidang:wizard.bidang,tajuk:wizard.tajuk,tp:wizard.pukalTp,tarikh,evidence:evidenceImg};
       state.records.push(rec); bulk.push(rec);
     });
     wizard.pukalSelected.clear(); wizard.pukalTp=null;
-    await saveState(); if(bulk.length) await apiPost("addRecordsBulk",{records:bulk});
+    await saveState();
+    if(bulk.length) await apiPost("addRecordsBulk",{records:bulk, evidenceBase64: evidenceImg});
+    evidenceThumb.style.display="none"; evidenceThumb.src=""; document.getElementById("pukalEvidence").value="";
     renderStep3(); renderRekodTable();
     t.textContent = origTxt2; t.disabled=false;
     closeModal("uploadPukalModal");
@@ -2737,6 +2746,10 @@ document.getElementById("cetakIndividuKelasSelect")?.addEventListener("change", 
 document.getElementById("lihatEvidence")?.addEventListener("change",(e)=>{
   const f=e.target.files[0]; if(!f) return;
   compressImage(f,dataUrl=>{ const img=document.getElementById("lihatEvidenceThumb"); img.src=dataUrl; img.style.display="inline-block"; });
+});
+document.getElementById("pukalEvidence")?.addEventListener("change",(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  compressImage(f,dataUrl=>{ const img=document.getElementById("pukalEvidenceThumb"); img.src=dataUrl; img.style.display="inline-block"; });
 });
 
 document.getElementById("classSelect").addEventListener("change",(e)=>{
