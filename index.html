@@ -71,6 +71,8 @@ input,select{font-family:inherit;}
 .tp-murid-chip.active .small-note{color:#c7cee6;}
 .tp-inbox-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:#fff;border:1px solid #fecaca;border-radius:8px;cursor:pointer;transition:.15s;}
 .tp-inbox-row:hover{background:#fff5f5;border-color:#f87171;}
+.checklist-row:hover{background:#f8f9fb;}
+.checklist-row.checked{background:#f0fdf4;}
 .sidebar-quote{margin-top:18px;background:var(--navy-light);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;font-size:11px;color:#c7cee6;}
 .sidebar-quote .qtitle{font-size:9px;letter-spacing:.5px;color:#8f9bc2;font-weight:800;margin-bottom:5px;}
 .sidebar-quote .qheading{color:var(--gold-light);font-weight:800;font-size:12.5px;line-height:1.25;margin-bottom:6px;}
@@ -667,6 +669,24 @@ html,body{overflow-x:hidden;max-width:100%;}
   </div>
 </div>
 
+<div class="modal-overlay" id="quickChecklistModal">
+  <div class="modal-box" style="max-width:420px;">
+    <button class="close-x" data-close="quickChecklistModal">✕</button>
+    <h3 id="quickChecklistTitle" style="margin-top:0;">Rekod Pantas</h3>
+    <p class="small-note" id="quickChecklistBidang" style="margin-top:-8px;margin-bottom:14px;"></p>
+    <label style="font-size:12px;color:var(--muted);font-weight:700;">Tahap Penguasaan (TP)</label>
+    <div class="tp-row" id="quickChecklistTpRow" style="margin:6px 0 14px;"></div>
+    <label style="font-size:12px;color:var(--muted);font-weight:700;">Tarikh</label>
+    <input type="date" id="quickChecklistTarikh" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13.5px;margin:4px 0 14px;">
+    <div class="evidence-row">
+      <label class="hint" style="font-weight:700;color:var(--text);font-size:13px;">📎 Upload Evidence (pilihan):</label>
+      <input type="file" id="quickChecklistEvidence" accept="image/*">
+      <img id="quickChecklistEvidenceThumb" class="evidence-thumb" style="display:none;">
+    </div>
+    <button class="btn-primary" id="btnSimpanQuickChecklist" style="margin-top:14px;width:100%;">Simpan Rekod</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="kriteriaModal">
   <div class="modal-box" style="max-width:480px;">
     <button class="close-x" data-close="kriteriaModal">✕</button>
@@ -922,7 +942,7 @@ const FALLBACK_EXEC_URL = "https://script.google.com/macros/s/AKfycbw5lTxFcS_M09
 
 let state = {
   settings:{ schoolName:"SK SERI GRISEK", schoolCode:"", apiUrl:FALLBACK_EXEC_URL, deadlineText:"", deadlineDate:"", deadlineMemos:[] },
-  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[], tpSemasaDecisions:[], activityLog:[], studentNotes:{}
+  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[], tpSemasaDecisions:[], activityLog:[], studentNotes:{}, anecdotes:{}
 };
 let session = { currentUser:null };
 let wizard = { bidang:null, tajuk:null, mode:"individu", pukalTp:null, pukalSelected:new Set(), examJenis:"UPSA" };
@@ -1046,6 +1066,27 @@ function getTpSemasaDecision(studentId){
 /* TP Semasa: cadangan berdasarkan TP DOMINAN (mod) daripada SEMUA tajuk (22 tajuk),
    lengkap dengan profil taburan peratusan. Ini adalah lapisan pertama sebelum
    Analisis 7 Bidang dan Cadangan TP Akhir. */
+/* Lukis carta garis trend TP mengikut masa guna SVG ringkas (tiada library luar) */
+function buildTrendSvg(points){
+  if(!points.length) return `<p class="small-note">Tiada rekod untuk dipaparkan.</p>`;
+  const W=560, H=160, padL=34, padR=14, padT=10, padB=24;
+  const innerW = W-padL-padR, innerH = H-padT-padB;
+  const n = points.length;
+  const x = i => n<=1 ? padL+innerW/2 : padL + (innerW * i/(n-1));
+  const y = tp => padT + innerH - ((tp-1)/5)*innerH;
+  const pathD = points.map((p,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)},${y(p.tp).toFixed(1)}`).join(" ");
+  const gridLines = [1,2,3,4,5,6].map(tp=>`<line x1="${padL}" y1="${y(tp)}" x2="${W-padR}" y2="${y(tp)}" stroke="#eef0f4" stroke-width="1"/><text x="${padL-8}" y="${y(tp)+3}" font-size="9" fill="#8a90a0" text-anchor="end">TP${tp}</text>`).join("");
+  const dots = points.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(p.tp).toFixed(1)}" r="3.5" fill="#c9973e"/>`).join("");
+  const firstLabel = points[0] ? fmtDate(points[0].tarikh) : "";
+  const lastLabel = points[n-1] ? fmtDate(points[n-1].tarikh) : "";
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-width:520px;">
+    ${gridLines}
+    <path d="${pathD}" fill="none" stroke="#c9973e" stroke-width="2"/>
+    ${dots}
+    <text x="${padL}" y="${H-4}" font-size="9" fill="#8a90a0">${firstLabel}</text>
+    <text x="${W-padR}" y="${H-4}" font-size="9" fill="#8a90a0" text-anchor="end">${lastLabel}</text>
+  </svg>`;
+}
 function computeTpSemasaCadangan(studentId){
   const profile = computeOverallProfile(studentId);
   if(!profile.totalTopics) return { profile, cadanganTp:null, dist:[] };
@@ -1210,6 +1251,7 @@ async function syncFromServer(){
       if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
       if(server.activityLog) state.activityLog = server.activityLog;
       if(server.studentNotes) state.studentNotes = server.studentNotes;
+      if(server.anecdotes) state.anecdotes = server.anecdotes;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName = server.settings.schoolName;
         if(server.settings.schoolCode) state.settings.schoolCode = server.settings.schoolCode;
@@ -1587,6 +1629,8 @@ function renderRekodTable(){
 let tpViewStudentId = null;
 let tpInboxExpanded = false;
 let tpEvidenceListExpanded = false;
+let tpChecklistExpanded = false;
+let quickChecklistCtx = null;
 function renderTpViewSelectors(){
   const kelasSel = document.getElementById("tpViewKelasSelect");
   if(!kelasSel.dataset.built){ kelasSel.innerHTML = `<option value="ALL">Semua Kelas</option>` + CLASSES.map(c=>`<option value="${c}">${c.toUpperCase()}</option>`).join(""); kelasSel.dataset.built="1"; }
@@ -1650,6 +1694,32 @@ function renderTpView(){
   const tpAkhirDec = getTpAkhirDecision(studentId);
   const semasa = computeTpSemasaCadangan(studentId);
   const tpSemasaDec = getTpSemasaDecision(studentId);
+  const year = getYearFromClass(s.kelas);
+
+  // Senarai Semak Tajuk - semua tajuk tahun ni merentasi 7 bidang, tanda mana dah ada rekod
+  const checklistItems = [];
+  Object.keys(BIDANG).forEach(bKey=>{
+    getTajukList(year, bKey).all.forEach(t=>{
+      const rec = allRecs.find(r=>r.bidang===bKey && r.tajuk===t);
+      checklistItems.push({ bidang:bKey, tajuk:t, hasRecord:!!rec, hasEvidence: !!(rec && rec.evidence) });
+    });
+  });
+  const checklistChecked = checklistItems.filter(c=>c.hasRecord).length;
+
+  // Taburan Penilaian - kelompok TP1-2 Rendah, TP3-4 Sederhana, TP5-6 Tinggi
+  const taburan = { Rendah:0, Sederhana:0, Tinggi:0 };
+  allRecs.forEach(r=>{
+    const v = parseInt(String(r.tp).replace("TP",""));
+    if(v<=2) taburan.Rendah++; else if(v<=4) taburan.Sederhana++; else taburan.Tinggi++;
+  });
+  const taburanMax = Math.max(1, taburan.Rendah, taburan.Sederhana, taburan.Tinggi);
+
+  // Trend TP mengikut masa - rekod tersusun ikut tarikh
+  const trendPoints = allRecs.slice().sort((a,b)=>a.tarikh.localeCompare(b.tarikh)).map(r=>({
+    tarikh:r.tarikh, tp:parseInt(String(r.tp).replace("TP",""))
+  }));
+
+  const anecdotes = (state.anecdotes && state.anecdotes[studentId]) || [];
 
   const currentChecksum = recordsChecksum(studentId);
   const isSemasaFinal = tpSemasaDec && tpSemasaDec.status!=="Menunggu Pengesahan";
@@ -1749,6 +1819,45 @@ function renderTpView(){
       `).join("")}
     </div>` : ""}
 
+    <div class="two-col" style="margin-bottom:18px;">
+      <div>
+        <h4 class="section-title">📊 Taburan Penilaian</h4>
+        <div style="display:flex;align-items:flex-end;gap:24px;height:120px;padding:0 10px;border-bottom:1.5px solid var(--border);">
+          ${["Rendah","Sederhana","Tinggi"].map(k=>{
+            const barColor = k==="Tinggi" ? "#c9973e" : (k==="Sederhana" ? "#c9973e" : "#c0524a");
+            const h = Math.round((taburan[k]/taburanMax)*90);
+            return `<div style="flex:1;text-align:center;">
+              <div style="font-size:12px;font-weight:800;margin-bottom:4px;">${taburan[k]}</div>
+              <div style="height:${Math.max(h,4)}px;background:${k==="Rendah"?"#c0524a":"#c9973e"};border-radius:4px 4px 0 0;"></div>
+              <div class="small-note" style="margin-top:4px;">${k}</div>
+            </div>`;
+          }).join("")}
+        </div>
+        <p class="small-note" style="margin-top:6px;">Rendah = TP1–TP2 · Sederhana = TP3–TP4 · Tinggi = TP5–TP6</p>
+      </div>
+      <div>
+        <h4 class="section-title">📈 Trend TP Mengikut Masa</h4>
+        ${buildTrendSvg(trendPoints)}
+      </div>
+    </div>
+
+    <h4 class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>✅ Senarai Semak Tajuk <span class="small-note">(${checklistChecked}/${checklistItems.length} ditanda)</span></span>
+      <button class="btn-outline btn-sm" id="btnToggleChecklist">${tpChecklistExpanded?'Sorok ▲':'Papar ▼'}</button>
+    </h4>
+    ${tpChecklistExpanded ? `
+    <p class="small-note" style="margin-bottom:8px;">Untuk pemerhatian/penilaian lisan tanpa fail — klik tajuk yang belum ditanda untuk rekod TP dengan pantas.</p>
+    <div style="margin-bottom:18px;max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:2px;">
+      ${checklistItems.map((c,idx)=>`
+        <div class="checklist-row ${c.hasRecord?'checked':''}" data-checklist-item="${idx}" data-bidang="${c.bidang}" data-tajuk="${encodeURIComponent(c.tajuk)}" style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid var(--border);cursor:pointer;">
+          <span style="font-size:16px;">${c.hasRecord?'✅':'⬜'}</span>
+          <span style="flex:1;font-size:12.5px;font-weight:700;text-transform:uppercase;">${c.tajuk}</span>
+          <span class="small-note">${BIDANG[c.bidang]?.label||c.bidang}</span>
+          ${c.hasEvidence?`<span class="small-note" style="color:#166534;font-weight:700;">📎 ADA EVIDEN</span>`:""}
+        </div>
+      `).join("")}
+    </div>` : ""}
+
     <h4 class="section-title">🗒️ Catatan Guru</h4>
     <div style="margin-bottom:18px;">
       <label style="font-size:12px;color:var(--muted);font-weight:700;">Pemerhatian</label>
@@ -1759,6 +1868,25 @@ function renderTpView(){
       <textarea id="catatanCadangan" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:4px 0 10px;">${(studentNote.cadangan||"")}</textarea>
       <button class="btn-primary btn-sm" id="btnSimpanCatatanGuru">Simpan Catatan</button>
       ${studentNote.updatedAt?`<span class="small-note" style="margin-left:8px;">Terakhir dikemaskini: ${fmtDateTime(studentNote.updatedAt)}</span>`:""}
+    </div>
+
+    <h4 class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>📝 Log Anekdot</span>
+      <button class="btn-outline btn-sm" id="btnTambahAnekdot">+ Tambah</button>
+    </h4>
+    <div style="margin-bottom:18px;">
+      ${!anecdotes.length ? `<p class="small-note" style="text-align:center;padding:14px 0;">Tiada anekdot direkod.</p>` :
+        `<div style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto;">
+          ${anecdotes.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh)).map(a=>`
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8f9fb;border:1px solid var(--border);border-radius:8px;">
+              <div>
+                <div class="small-note" style="font-weight:700;">${fmtDate(a.tarikh)} · ${a.oleh||""}</div>
+                <div style="font-size:13px;margin-top:2px;">${a.catatan}</div>
+              </div>
+              <button class="icon-btn" data-del-anekdot="${a.id}" title="Padam">🗑️</button>
+            </div>
+          `).join("")}
+        </div>`}
     </div>
 
     ${tpSemasaBlock}
@@ -2190,6 +2318,72 @@ document.addEventListener("click", async (e)=>{
   if(t.id==="btnToggleEvidenceList"){
     tpEvidenceListExpanded = !tpEvidenceListExpanded;
     renderTpView();
+  }
+  if(t.id==="btnToggleChecklist"){
+    tpChecklistExpanded = !tpChecklistExpanded;
+    renderTpView();
+  }
+  if(t.closest("[data-checklist-item]")){
+    const row = t.closest("[data-checklist-item]");
+    const bidang = row.dataset.bidang;
+    const tajuk = decodeURIComponent(row.dataset.tajuk);
+    quickChecklistCtx = { bidang, tajuk };
+    document.getElementById("quickChecklistTitle").textContent = tajuk;
+    document.getElementById("quickChecklistBidang").textContent = BIDANG[bidang]?.label || bidang;
+    document.getElementById("quickChecklistTarikh").value = todayStr();
+    document.getElementById("quickChecklistTpRow").innerHTML = TP_LIST.map(tp=>`<button class="tp-btn ${tpClass(tp)}" data-quick-tp="${tp}">${tp}</button>`).join("");
+    document.querySelectorAll("#quickChecklistTpRow .tp-btn").forEach(b=>b.classList.remove("selected"));
+    const thumb = document.getElementById("quickChecklistEvidenceThumb");
+    thumb.style.display="none"; thumb.src="";
+    const evInput = document.getElementById("quickChecklistEvidence"); if(evInput) evInput.value="";
+    openModal("quickChecklistModal");
+  }
+  if(t.dataset.quickTp){
+    document.querySelectorAll("#quickChecklistTpRow .tp-btn").forEach(b=>b.classList.remove("selected"));
+    t.classList.add("selected");
+  }
+  if(t.id==="btnSimpanQuickChecklist"){
+    if(t.disabled) return;
+    const chosenBtn = document.querySelector("#quickChecklistTpRow .tp-btn.selected");
+    if(!chosenBtn){ showToast("Sila pilih Tahap Penguasaan (TP)."); return; }
+    if(!quickChecklistCtx){ return; }
+    const tarikh = document.getElementById("quickChecklistTarikh").value || todayStr();
+    const evidenceThumb = document.getElementById("quickChecklistEvidenceThumb");
+    const evidenceImg = evidenceThumb.style.display!=="none" ? evidenceThumb.src : null;
+    t.disabled=true; t.textContent="⏳ Menyimpan...";
+    const newRecord = { id:uid("r"), studentId:tpViewStudentId, bidang:quickChecklistCtx.bidang, tajuk:quickChecklistCtx.tajuk, tp:chosenBtn.dataset.quickTp, tarikh, evidence:evidenceImg };
+    state.records.push(newRecord);
+    await saveState();
+    await apiPost("addRecord", Object.assign({}, newRecord, { evidenceBase64: evidenceImg }));
+    t.disabled=false; t.textContent="Simpan Rekod";
+    closeModal("quickChecklistModal");
+    quickChecklistCtx = null;
+    renderTpView(); renderRekodTable();
+    showToast("Rekod disimpan.");
+  }
+  if(t.id==="btnTambahAnekdot"){
+    const teks = await customPrompt("Tulis catatan anekdot:", "");
+    if(teks===null || !teks.trim()) return;
+    const entry = { id:uid("a"), tarikh:todayStr(), oleh:(session.currentUser&&session.currentUser.nama)||"", catatan:teks.trim() };
+    if(!state.anecdotes) state.anecdotes = {};
+    if(!state.anecdotes[tpViewStudentId]) state.anecdotes[tpViewStudentId] = [];
+    state.anecdotes[tpViewStudentId].push(entry);
+    await saveState();
+    await apiPost("addAnecdote", Object.assign({studentId: tpViewStudentId}, entry));
+    renderTpView();
+    showToast("Anekdot ditambah.");
+  }
+  if(t.dataset.delAnekdot){
+    if(await customConfirm("Padam catatan anekdot ini?")){
+      const id = t.dataset.delAnekdot;
+      if(state.anecdotes && state.anecdotes[tpViewStudentId]){
+        state.anecdotes[tpViewStudentId] = state.anecdotes[tpViewStudentId].filter(a=>a.id!==id);
+      }
+      await saveState();
+      await apiPost("deleteAnecdote", {studentId: tpViewStudentId, id});
+      renderTpView();
+      showToast("Anekdot dipadam.");
+    }
   }
   if(t.id==="btnSimpanCatatanGuru"){
     if(t.disabled) return;
@@ -2780,6 +2974,7 @@ document.addEventListener("click", async (e)=>{
       if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
       if(server.activityLog) state.activityLog = server.activityLog;
       if(server.studentNotes) state.studentNotes = server.studentNotes;
+      if(server.anecdotes) state.anecdotes = server.anecdotes;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName=server.settings.schoolName;
         if(server.settings.deadlineMemos){ try{ state.settings.deadlineMemos=JSON.parse(server.settings.deadlineMemos); }catch(e){} }
@@ -2819,6 +3014,10 @@ document.getElementById("lihatEvidence")?.addEventListener("change",(e)=>{
 document.getElementById("pukalEvidence")?.addEventListener("change",(e)=>{
   const f=e.target.files[0]; if(!f) return;
   compressImage(f,dataUrl=>{ const img=document.getElementById("pukalEvidenceThumb"); img.src=dataUrl; img.style.display="inline-block"; });
+});
+document.getElementById("quickChecklistEvidence")?.addEventListener("change",(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  compressImage(f,dataUrl=>{ const img=document.getElementById("quickChecklistEvidenceThumb"); img.src=dataUrl; img.style.display="inline-block"; });
 });
 
 document.getElementById("classSelect").addEventListener("change",(e)=>{
