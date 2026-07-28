@@ -1684,7 +1684,6 @@ function renderTpView(){
   const studentId = tpViewStudentId;
   if(!studentId){ box.innerHTML = `<div class="empty-row">Tiada murid untuk dipaparkan.</div>`; return; }
   const s = studentById(studentId); if(!s){ box.innerHTML = `<div class="empty-row">Murid tidak dijumpai.</div>`; return; }
-  const studentNote = (state.studentNotes && state.studentNotes[studentId]) || {};
   const allRecs = state.records.filter(r=>r.studentId===studentId);
   if(allRecs.length===0){
     box.innerHTML = `<h3 class="section-title">${s.nama} (${s.kelas})</h3><div class="empty-row">Belum ada rekod TP untuk murid ini lagi. Pergi ke Rekod untuk tambah rekod dahulu.</div>`;
@@ -1718,8 +1717,6 @@ function renderTpView(){
   const trendPoints = allRecs.slice().sort((a,b)=>a.tarikh.localeCompare(b.tarikh)).map(r=>({
     tarikh:r.tarikh, tp:parseInt(String(r.tp).replace("TP",""))
   }));
-
-  const anecdotes = (state.anecdotes && state.anecdotes[studentId]) || [];
 
   const currentChecksum = recordsChecksum(studentId);
   const isSemasaFinal = tpSemasaDec && tpSemasaDec.status!=="Menunggu Pengesahan";
@@ -1857,37 +1854,6 @@ function renderTpView(){
         </div>
       `).join("")}
     </div>` : ""}
-
-    <h4 class="section-title">🗒️ Catatan Guru</h4>
-    <div style="margin-bottom:18px;">
-      <label style="font-size:12px;color:var(--muted);font-weight:700;">Pemerhatian</label>
-      <textarea id="catatanPemerhatian" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:4px 0 10px;">${(studentNote.pemerhatian||"")}</textarea>
-      <label style="font-size:12px;color:var(--muted);font-weight:700;">Komen Prestasi</label>
-      <textarea id="catatanKomen" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:4px 0 10px;">${(studentNote.komenPrestasi||"")}</textarea>
-      <label style="font-size:12px;color:var(--muted);font-weight:700;">Cadangan Tindakan Susulan</label>
-      <textarea id="catatanCadangan" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:4px 0 10px;">${(studentNote.cadangan||"")}</textarea>
-      <button class="btn-primary btn-sm" id="btnSimpanCatatanGuru">Simpan Catatan</button>
-      ${studentNote.updatedAt?`<span class="small-note" style="margin-left:8px;">Terakhir dikemaskini: ${fmtDateTime(studentNote.updatedAt)}</span>`:""}
-    </div>
-
-    <h4 class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
-      <span>📝 Log Anekdot</span>
-      <button class="btn-outline btn-sm" id="btnTambahAnekdot">+ Tambah</button>
-    </h4>
-    <div style="margin-bottom:18px;">
-      ${!anecdotes.length ? `<p class="small-note" style="text-align:center;padding:14px 0;">Tiada anekdot direkod.</p>` :
-        `<div style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto;">
-          ${anecdotes.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh)).map(a=>`
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8f9fb;border:1px solid var(--border);border-radius:8px;">
-              <div>
-                <div class="small-note" style="font-weight:700;">${fmtDate(a.tarikh)} · ${a.oleh||""}</div>
-                <div style="font-size:13px;margin-top:2px;">${a.catatan}</div>
-              </div>
-              <button class="icon-btn" data-del-anekdot="${a.id}" title="Padam">🗑️</button>
-            </div>
-          `).join("")}
-        </div>`}
-    </div>
 
     ${tpSemasaBlock}
 
@@ -2360,45 +2326,6 @@ document.addEventListener("click", async (e)=>{
     quickChecklistCtx = null;
     renderTpView(); renderRekodTable();
     showToast("Rekod disimpan.");
-  }
-  if(t.id==="btnTambahAnekdot"){
-    const teks = await customPrompt("Tulis catatan anekdot:", "");
-    if(teks===null || !teks.trim()) return;
-    const entry = { id:uid("a"), tarikh:todayStr(), oleh:(session.currentUser&&session.currentUser.nama)||"", catatan:teks.trim() };
-    if(!state.anecdotes) state.anecdotes = {};
-    if(!state.anecdotes[tpViewStudentId]) state.anecdotes[tpViewStudentId] = [];
-    state.anecdotes[tpViewStudentId].push(entry);
-    await saveState();
-    await apiPost("addAnecdote", Object.assign({studentId: tpViewStudentId}, entry));
-    renderTpView();
-    showToast("Anekdot ditambah.");
-  }
-  if(t.dataset.delAnekdot){
-    if(await customConfirm("Padam catatan anekdot ini?")){
-      const id = t.dataset.delAnekdot;
-      if(state.anecdotes && state.anecdotes[tpViewStudentId]){
-        state.anecdotes[tpViewStudentId] = state.anecdotes[tpViewStudentId].filter(a=>a.id!==id);
-      }
-      await saveState();
-      await apiPost("deleteAnecdote", {studentId: tpViewStudentId, id});
-      renderTpView();
-      showToast("Anekdot dipadam.");
-    }
-  }
-  if(t.id==="btnSimpanCatatanGuru"){
-    if(t.disabled) return;
-    const pemerhatian = document.getElementById("catatanPemerhatian").value.trim();
-    const komenPrestasi = document.getElementById("catatanKomen").value.trim();
-    const cadangan = document.getElementById("catatanCadangan").value.trim();
-    const note = { pemerhatian, komenPrestasi, cadangan, updatedAt: new Date().toISOString() };
-    if(!state.studentNotes) state.studentNotes = {};
-    state.studentNotes[tpViewStudentId] = note;
-    t.disabled = true;
-    await saveState();
-    await apiPost("saveStudentNotes", Object.assign({studentId: tpViewStudentId}, note));
-    t.disabled = false;
-    renderTpView();
-    showToast("Catatan guru disimpan.");
   }
   if(t.closest("[data-toggle-tp-inbox]")){
     tpInboxExpanded = !tpInboxExpanded;
