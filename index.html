@@ -889,6 +889,7 @@ function getTajukList(year, bidangKey){
   return { base, custom, all: base.concat(custom) };
 }
 const TP_LIST = ["TP1","TP2","TP3","TP4","TP5","TP6"];
+const DESKRIPTOR_TP = {1:"Mengingat",2:"Memahami",3:"Mengaplikasi",4:"Menganalisis",5:"Menilai",6:"Mencipta"};
 const QUOTES = [
   {title:"Ilmu Tanpa Amal Tiada Guna", quote:"Ilmu yang tidak diamalkan ibarat pokok yang tidak berbuah.", tip:"Belajar untuk beramal, bukan sekadar tahu."},
   {title:"Amal Tanpa Ikhlas Sia-Sia", quote:"Amal ibarat tubuh. Ikhlas adalah roh. Amal tanpa ikhlas seperti mayat tak bernyawa.", tip:"Periksa niat kita hari ini."},
@@ -921,7 +922,7 @@ const FALLBACK_EXEC_URL = "https://script.google.com/macros/s/AKfycbw5lTxFcS_M09
 
 let state = {
   settings:{ schoolName:"SK SERI GRISEK", schoolCode:"", apiUrl:FALLBACK_EXEC_URL, deadlineText:"", deadlineDate:"", deadlineMemos:[] },
-  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[], tpSemasaDecisions:[], activityLog:[]
+  students:[], records:[], examMarks:[], users:[], customTajuk:{}, tajukKriteria:{}, bidangDecisions:[], tpAkhirDecisions:[], tpSemasaDecisions:[], activityLog:[], studentNotes:{}
 };
 let session = { currentUser:null };
 let wizard = { bidang:null, tajuk:null, mode:"individu", pukalTp:null, pukalSelected:new Set(), examJenis:"UPSA" };
@@ -1208,6 +1209,7 @@ async function syncFromServer(){
       if(server.tpAkhirDecisions) state.tpAkhirDecisions = server.tpAkhirDecisions;
       if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
       if(server.activityLog) state.activityLog = server.activityLog;
+      if(server.studentNotes) state.studentNotes = server.studentNotes;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName = server.settings.schoolName;
         if(server.settings.schoolCode) state.settings.schoolCode = server.settings.schoolCode;
@@ -1584,6 +1586,7 @@ function renderRekodTable(){
 /* ================= TAHAP PENGUASAAN (TP) VIEW ================= */
 let tpViewStudentId = null;
 let tpInboxExpanded = false;
+let tpEvidenceListExpanded = false;
 function renderTpViewSelectors(){
   const kelasSel = document.getElementById("tpViewKelasSelect");
   if(!kelasSel.dataset.built){ kelasSel.innerHTML = `<option value="ALL">Semua Kelas</option>` + CLASSES.map(c=>`<option value="${c}">${c.toUpperCase()}</option>`).join(""); kelasSel.dataset.built="1"; }
@@ -1637,6 +1640,7 @@ function renderTpView(){
   const studentId = tpViewStudentId;
   if(!studentId){ box.innerHTML = `<div class="empty-row">Tiada murid untuk dipaparkan.</div>`; return; }
   const s = studentById(studentId); if(!s){ box.innerHTML = `<div class="empty-row">Murid tidak dijumpai.</div>`; return; }
+  const studentNote = (state.studentNotes && state.studentNotes[studentId]) || {};
   const allRecs = state.records.filter(r=>r.studentId===studentId);
   if(allRecs.length===0){
     box.innerHTML = `<h3 class="section-title">${s.nama} (${s.kelas})</h3><div class="empty-row">Belum ada rekod TP untuk murid ini lagi. Pergi ke Rekod untuk tambah rekod dahulu.</div>`;
@@ -1718,8 +1722,43 @@ function renderTpView(){
   box.innerHTML = `
     <h3 class="section-title">${s.nama} (${s.kelas})</h3>
     <div class="stat-grid" style="margin-bottom:16px;">
-      <div class="stat-card"><div class="stat-icon" style="background:${isSemasaFinal?'#dcfce7':'#e6ecfb'};">📊</div><div><div class="stat-num">TP${semasaFinalTp||'-'}</div><div class="stat-lbl">${isSemasaFinal?'TP Semasa Muktamad':'TP Semasa Cadangan'}</div></div></div>
-      <div class="stat-card"><div class="stat-icon" style="background:${isFinal?'#dcfce7':'#fef3c7'};">🎯</div><div><div class="stat-num">TP${finalTp}</div><div class="stat-lbl">${isFinal?'TP Akhir Muktamad':'TP Akhir Cadangan'}</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:${isSemasaFinal?'#dcfce7':'#e6ecfb'};">📊</div><div><div class="stat-num">TP${semasaFinalTp||'-'}</div><div class="stat-lbl">${isSemasaFinal?'TP Semasa Muktamad':'TP Semasa Cadangan'}${semasaFinalTp?` · <i>${DESKRIPTOR_TP[semasaFinalTp]}</i>`:''}</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:${isFinal?'#dcfce7':'#fef3c7'};">🎯</div><div><div class="stat-num">TP${finalTp}</div><div class="stat-lbl">${isFinal?'TP Akhir Muktamad':'TP Akhir Cadangan'}${finalTp?` · <i>${DESKRIPTOR_TP[finalTp]}</i>`:''}</div></div></div>
+    </div>
+
+    <h4 class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>📎 Senarai Eviden <span class="small-note">(${allRecs.length} rekod)</span></span>
+      <button class="btn-outline btn-sm" id="btnToggleEvidenceList">${tpEvidenceListExpanded?'Sorok ▲':'Papar ▼'}</button>
+    </h4>
+    ${tpEvidenceListExpanded ? `
+    <div style="margin-bottom:18px;max-height:280px;overflow:auto;display:flex;flex-direction:column;gap:6px;">
+      ${allRecs.slice().sort((a,b)=>b.tarikh.localeCompare(a.tarikh)).map(r=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:#f8f9fb;border:1px solid var(--border);border-radius:8px;">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            ${r.evidence?`<img src="${r.evidence}" style="width:32px;height:32px;object-fit:cover;border-radius:6px;flex-shrink:0;">`:`<span style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#eee;border-radius:6px;flex-shrink:0;">❓</span>`}
+            <div style="min-width:0;">
+              <b style="font-size:12.5px;">${r.tajuk}</b>
+              <div class="small-note">${BIDANG[r.bidang]?.label||r.bidang} · ${fmtDate(r.tarikh)} · <span class="badge ${tpClass(r.tp)}" style="font-size:10px;padding:1px 6px;">${r.tp}</span></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            ${r.evidence?`<button class="icon-btn" data-view-evidence="${r.id}" title="Lihat">👁️</button>`:''}
+            <button class="icon-btn" data-del-record="${r.id}" title="Padam">🗑️</button>
+          </div>
+        </div>
+      `).join("")}
+    </div>` : ""}
+
+    <h4 class="section-title">🗒️ Catatan Guru</h4>
+    <div style="margin-bottom:18px;">
+      <label style="font-size:12px;color:var(--muted);font-weight:700;">Pemerhatian</label>
+      <textarea id="catatanPemerhatian" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:4px 0 10px;">${(studentNote.pemerhatian||"")}</textarea>
+      <label style="font-size:12px;color:var(--muted);font-weight:700;">Komen Prestasi</label>
+      <textarea id="catatanKomen" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:4px 0 10px;">${(studentNote.komenPrestasi||"")}</textarea>
+      <label style="font-size:12px;color:var(--muted);font-weight:700;">Cadangan Tindakan Susulan</label>
+      <textarea id="catatanCadangan" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin:4px 0 10px;">${(studentNote.cadangan||"")}</textarea>
+      <button class="btn-primary btn-sm" id="btnSimpanCatatanGuru">Simpan Catatan</button>
+      ${studentNote.updatedAt?`<span class="small-note" style="margin-left:8px;">Terakhir dikemaskini: ${fmtDateTime(studentNote.updatedAt)}</span>`:""}
     </div>
 
     ${tpSemasaBlock}
@@ -2148,6 +2187,25 @@ document.addEventListener("click", async (e)=>{
     renderTpView();
     document.getElementById("tpViewContent")?.scrollIntoView({behavior:"smooth", block:"start"});
   }
+  if(t.id==="btnToggleEvidenceList"){
+    tpEvidenceListExpanded = !tpEvidenceListExpanded;
+    renderTpView();
+  }
+  if(t.id==="btnSimpanCatatanGuru"){
+    if(t.disabled) return;
+    const pemerhatian = document.getElementById("catatanPemerhatian").value.trim();
+    const komenPrestasi = document.getElementById("catatanKomen").value.trim();
+    const cadangan = document.getElementById("catatanCadangan").value.trim();
+    const note = { pemerhatian, komenPrestasi, cadangan, updatedAt: new Date().toISOString() };
+    if(!state.studentNotes) state.studentNotes = {};
+    state.studentNotes[tpViewStudentId] = note;
+    t.disabled = true;
+    await saveState();
+    await apiPost("saveStudentNotes", Object.assign({studentId: tpViewStudentId}, note));
+    t.disabled = false;
+    renderTpView();
+    showToast("Catatan guru disimpan.");
+  }
   if(t.closest("[data-toggle-tp-inbox]")){
     tpInboxExpanded = !tpInboxExpanded;
     renderTpInboxTindakan();
@@ -2290,6 +2348,7 @@ document.addEventListener("click", async (e)=>{
       const id=t.dataset.delRecord; state.records=state.records.filter(r=>r.id!==id);
       await saveState(); apiPost("deleteRecord",{id});
       if(lihatMuridId) renderLihatMuridModal(lihatMuridId);
+      if(tpViewStudentId) renderTpView();
       renderRekodTable(); renderAnalysis();
       showToast("Rekod dipadam.");
     }
@@ -2720,6 +2779,7 @@ document.addEventListener("click", async (e)=>{
       if(server.tpAkhirDecisions) state.tpAkhirDecisions = server.tpAkhirDecisions;
       if(server.tpSemasaDecisions) state.tpSemasaDecisions = server.tpSemasaDecisions;
       if(server.activityLog) state.activityLog = server.activityLog;
+      if(server.studentNotes) state.studentNotes = server.studentNotes;
       if(server.settings){
         if(server.settings.schoolName) state.settings.schoolName=server.settings.schoolName;
         if(server.settings.deadlineMemos){ try{ state.settings.deadlineMemos=JSON.parse(server.settings.deadlineMemos); }catch(e){} }
