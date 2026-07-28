@@ -266,7 +266,7 @@ html,body{overflow-x:hidden;max-width:100%;}
 /* ===== Tablet & Mobile: sidebar jadi menu tersorok mula 1024px (liputi iPad potret & lanskap) ===== */
 @media (max-width:1024px){
   .btn-menu-toggle{display:inline-flex;}
-  .sidebar{position:fixed;left:-280px;top:0;z-index:200;transition:.25s;height:100vh;}
+  .sidebar{position:fixed;left:-280px;top:0;z-index:200;transition:.25s;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   .sidebar.open{left:0;}
   .main-area{width:100%;}
   .topbar{padding:12px 18px;}
@@ -738,6 +738,7 @@ html,body{overflow-x:hidden;max-width:100%;}
     <div id="step2Block" style="display:none;">
       <h3 class="section-title">Langkah 2: Pilih Tajuk</h3>
       <div class="grid-btns" id="tajukGrid"></div>
+      <p class="small-note" id="tajukGridNote" style="margin-top:8px;"></p>
     </div>
     <div id="step3Block" style="display:none;">
       <h3 class="section-title">Langkah 3: Isi Pencapaian Murid</h3>
@@ -1507,10 +1508,18 @@ function renderTajukGrid(){
   if(!wizard.bidang){ block.style.display="none"; document.getElementById("step3Block").style.display="none"; return; }
   block.style.display="block";
   const year = getYearFromClass(state.settings.currentClass);
-  const list = getTajukList(year, wizard.bidang).all;
+  const fullList = getTajukList(year, wizard.bidang).all;
+  const studs = currentStudents();
+  const list = fullList.filter(t=>{
+    if(!studs.length) return true;
+    return !studs.every(s=>state.records.some(r=>r.studentId===s.id && r.bidang===wizard.bidang && r.tajuk===t));
+  });
+  const hiddenCount = fullList.length - list.length;
   document.getElementById("tajukGrid").innerHTML = list.map(t=>
     `<button data-tajuk="${t}" class="${wizard.tajuk===t?'selected2':''}">${t}</button>`
   ).join("") + `<button id="btnTambahTajuk" style="border-style:dashed;color:var(--navy);">➕ Tambah Tajuk</button>`;
+  const noteEl = document.getElementById("tajukGridNote");
+  if(noteEl) noteEl.textContent = hiddenCount>0 ? `${hiddenCount} tajuk disorok — semua murid dalam kelas ini dah direkod untuk tajuk tersebut.` : "";
   document.getElementById("step3Block").style.display = wizard.tajuk ? "block" : "none";
 }
 function renderStep3(){
@@ -2763,6 +2772,7 @@ document.getElementById("pukalKelasSelect")?.addEventListener("change",(e)=>{
   state.settings.currentClass = e.target.value;
   wizard.pukalSelected.clear();
   saveState();
+  renderTajukGrid();
   renderPukalStudentList();
 });
 document.getElementById("examKelasSelect")?.addEventListener("change",(e)=>{
